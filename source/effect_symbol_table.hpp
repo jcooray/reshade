@@ -24,42 +24,45 @@ namespace reshadefx
 	/// <summary>
 	/// A single symbol in the symbol table.
 	/// </summary>
-	using symbol = spv::Id;
+	struct symbol
+	{
+		spv::Op op;
+		spv::Id id;
+		type_info type;
+		const void *info;
+	};
 
 	/// <summary>
 	/// A symbol table managing a list of scopes and symbols.
 	/// </summary>
 	class symbol_table
 	{
+		struct symbol_data : symbol
+		{
+			scope scope;
+		};
+
 	public:
 		symbol_table();
 
-		void enter_scope(symbol parent = 0);
+		void enter_scope(spv::Id parent = 0);
 		void enter_namespace(const std::string &name);
 		void leave_scope();
 		void leave_namespace();
 
-		symbol current_parent() const { return _parent_stack.empty() ? 0 : _parent_stack.top(); }
+		spv::Id current_parent() const { return _parent_stack.empty() ? 0 : _parent_stack.top(); }
 		const scope &current_scope() const { return _current_scope; }
 
-		bool insert(const std::string &name, symbol symbol, spv::Op type, void *props, bool global = false);
+		bool insert(const std::string &name, const symbol &symbol, bool global = false);
 
 		symbol find(const std::string &name) const;
 		symbol find(const std::string &name, const scope &scope, bool exclusive) const;
 
-		bool resolve_call(const std::string &name, const std::vector<type_node> &args, const scope &scope, bool &ambiguous, spv::Op &out_op, spv::Id &out_id, spv::Id &out_type) const;
+		bool resolve_call(const std::string &name, const std::vector<type_info> &args, const scope &scope, bool &ambiguous, symbol &out_data) const;
 
 	private:
-		struct symbol_data
-		{
-			scope scope;
-			symbol symbol;
-			spv::Op type;
-			void *props;
-		};
-
 		scope _current_scope;
-		std::stack<symbol> _parent_stack;
+		std::stack<spv::Id> _parent_stack;
 		std::unordered_map<std::string, std::vector<symbol_data>> _symbol_stack;
 	};
 }

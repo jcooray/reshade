@@ -6,19 +6,11 @@
 #include "effect_parser.hpp"
 #include "effect_symbol_table.hpp"
 #include <algorithm>
+#include <assert.h>
 #include <fstream>
 
 namespace reshadefx
 {
-	//void scalar_literal_cast(const literal_expression_node *from, size_t i, int &to);
-	//void scalar_literal_cast(const literal_expression_node *from, size_t i, unsigned int &to);
-	//void scalar_literal_cast(const literal_expression_node *from, size_t i, float &to);
-	//void vector_literal_cast(const literal_expression_node *from, size_t k, literal_expression_node *to, size_t j);
-
-	spv::Id fold_constant_expression(spv::Id expression) {
-		return expression;
-	}
-
 	inline void write(std::ofstream &s, uint32_t word)
 	{
 		s.write((char *)&word, 4);;
@@ -322,7 +314,8 @@ namespace reshadefx
 			.add(spv::MemoryModelGLSL450));
 
 		// All entry point declarations
-		//_out_stream << spv_node(spv::OpEntryPoint, spv::ExecutionModelVertex, 0 /* function id */,
+		for (const auto &node : _entries.instructions)
+			write(s, node);
 
 		// All execution mode declarations
 		//_out_stream << spv_node(spv::OpExecutionMode, 0 /* function id */,
@@ -341,110 +334,12 @@ namespace reshadefx
 		// All annotation instructions
 
 		// All type declarations
-		write(s, spv_node(spv::OpTypeVoid, type_void));
-		write(s, spv_node(spv::OpTypeBool, type_bool));
-		write(s, spv_node(spv::OpTypeVector, type_bool2)
-			.add(type_bool)
-			.add(2));
-		write(s, spv_node(spv::OpTypeVector, type_bool3)
-			.add(type_bool)
-			.add(3));
-		write(s, spv_node(spv::OpTypeVector, type_bool4)
-			.add(type_bool)
-			.add(4));
-		write(s, spv_node(spv::OpTypeMatrix, type_bool2x2)
-			.add(type_bool2)
-			.add(2));
-		write(s, spv_node(spv::OpTypeMatrix, type_bool3x3)
-			.add(type_bool3)
-			.add(3));
-		write(s, spv_node(spv::OpTypeMatrix, type_bool4x4)
-			.add(type_bool4)
-			.add(4));
-		write(s, spv_node(spv::OpTypeInt, type_int)
-			.add(32) // Width: Specifies how many bits wide the type 
-			.add(1)); // Signedness: 1 indicates signed semantics
-		write(s, spv_node(spv::OpTypeVector, type_int2)
-			.add(type_int)
-			.add(2));
-		write(s, spv_node(spv::OpTypeVector, type_int3)
-			.add(type_int)
-			.add(3));
-		write(s, spv_node(spv::OpTypeVector, type_int4)
-			.add(type_int)
-			.add(4));
-		write(s, spv_node(spv::OpTypeMatrix, type_int2x2)
-			.add(type_int2)
-			.add(2));
-		write(s, spv_node(spv::OpTypeMatrix, type_int3x3)
-			.add(type_int3)
-			.add(3));
-		write(s, spv_node(spv::OpTypeMatrix, type_int4x4)
-			.add(type_int4)
-			.add(4));
-		write(s, spv_node(spv::OpTypeInt, type_uint)
-			.add(32) // Width: Specifies how many bits wide the type 
-			.add(0)); // Signedness: 0 indicates unsigned or no signedness semantics
-		write(s, spv_node(spv::OpTypeVector, type_uint2)
-			.add(type_uint)
-			.add(2));
-		write(s, spv_node(spv::OpTypeVector, type_uint3)
-			.add(type_uint)
-			.add(3));
-		write(s, spv_node(spv::OpTypeVector, type_uint4)
-			.add(type_uint)
-			.add(4));
-		write(s, spv_node(spv::OpTypeMatrix, type_uint2x2)
-			.add(type_uint2)
-			.add(2));
-		write(s, spv_node(spv::OpTypeMatrix, type_uint3x3)
-			.add(type_uint3)
-			.add(3));
-		write(s, spv_node(spv::OpTypeMatrix, type_uint4x4)
-			.add(type_uint4)
-			.add(4));
-		write(s, spv_node(spv::OpTypeFloat, type_float)
-			.add(32)); // Width: Specifies how many bits wide the type is (as described by the IEEE 754 standard)
-		write(s, spv_node(spv::OpTypeVector, type_float2)
-			.add(type_float)
-			.add(2));
-		write(s, spv_node(spv::OpTypeVector, type_float3)
-			.add(type_float)
-			.add(3));
-		write(s, spv_node(spv::OpTypeVector, type_float4)
-			.add(type_float)
-			.add(4));
-		write(s, spv_node(spv::OpTypeMatrix, type_float2x2)
-			.add(type_float2)
-			.add(2));
-		write(s, spv_node(spv::OpTypeMatrix, type_float3x3)
-			.add(type_float3)
-			.add(3));
-		write(s, spv_node(spv::OpTypeMatrix, type_float4x4)
-			.add(type_float4)
-			.add(4));
-		write(s, spv_node(spv::OpTypeImage, type_texture)
-			.add(type_float) // Sampled type: Type of the components that result from sampling
-			.add(spv::Dim2D) // Image dimension
-			.add(0) // Depth: 0 indicates not a depth image
-			.add(0) // Arrayed: 0 indicates non-arrayed content
-			.add(0) // MS: 0 indicates single-sampled content
-			.add(1) // Sampled: 1 indicates will be used with sampler
-			.add(spv::ImageFormatUnknown)); // Image format
-		write(s, spv_node(spv::OpTypeSampledImage, type_sampled_texture)
-			.add(type_texture));
-
 		for (const auto &node : _variables.instructions)
-		{
 			write(s, node);
-		}
 
 		// All function definitions
-
-		for (const auto &node : _functions.instructions)
-		{
+		for (const auto &node : _function_section.instructions)
 			write(s, node);
-		}
 
 		return true;
 	}
@@ -534,335 +429,254 @@ namespace reshadefx
 	}
 
 	// Types
-	bool parser::accept_type_class(type_node &type)
+	bool parser::accept_type_class(type_info &type)
 	{
-		type.definition = 0;
-		type.array_length = 0;
+		type.size = type.rows = type.cols = 0;
 
 		if (peek(tokenid::identifier))
 		{
-			type.rows = type.cols = 0;
-			type.basetype = type_node::datatype_struct;
+			type.base = spv::OpTypeStruct;
 
-			const auto symbol = _symbol_table->find(_token_next.literal_as_string);
+			const symbol symbol = _symbol_table->find(_token_next.literal_as_string);
 
-			if (symbol && lookup_id(symbol).op == spv::OpTypeStruct)
+			if (symbol.id && symbol.op == spv::OpTypeStruct)
 			{
-				type.definition = symbol;
+				type.definition = symbol.id;
 
 				consume();
+
+				return true;
 			}
-			else
-			{
-				return false;
-			}
+
+			return false;
 		}
 		else if (accept(tokenid::vector))
 		{
-			type.rows = 4, type.cols = 1;
-			type.basetype = type_node::datatype_float;
+			type.base = spv::OpTypeFloat;
+			type.size = 32;
+			type.rows = 4;
+			type.cols = 1;
+			type.is_signed = true;;
 
 			if (accept('<'))
 			{
 				if (!accept_type_class(type))
 				{
 					error(_token_next.location, 3000, "syntax error: unexpected '" + get_token_name(_token_next.id) + "', expected vector element type");
-
 					return false;
 				}
 
 				if (!type.is_scalar())
 				{
 					error(_token.location, 3122, "vector element type must be a scalar type");
-
 					return false;
 				}
 
 				if (!(expect(',') && expect(tokenid::int_literal)))
-				{
 					return false;
-				}
 
 				if (_token.literal_as_int < 1 || _token.literal_as_int > 4)
 				{
 					error(_token.location, 3052, "vector dimension must be between 1 and 4");
-
 					return false;
 				}
 
 				type.rows = _token.literal_as_int;
 
 				if (!expect('>'))
-				{
 					return false;
-				}
 			}
+
+			return true;
 		}
 		else if (accept(tokenid::matrix))
 		{
-			type.rows = 4, type.cols = 4;
-			type.basetype = type_node::datatype_float;
+			type.base = spv::OpTypeFloat;
+			type.size = 32;
+			type.rows = 4;
+			type.cols = 4;
+			type.is_signed = true;;
 
 			if (accept('<'))
 			{
 				if (!accept_type_class(type))
 				{
 					error(_token_next.location, 3000, "syntax error: unexpected '" + get_token_name(_token_next.id) + "', expected matrix element type");
-
 					return false;
 				}
 
 				if (!type.is_scalar())
 				{
 					error(_token.location, 3123, "matrix element type must be a scalar type");
-
 					return false;
 				}
 
 				if (!(expect(',') && expect(tokenid::int_literal)))
-				{
 					return false;
-				}
 
 				if (_token.literal_as_int < 1 || _token.literal_as_int > 4)
 				{
 					error(_token.location, 3053, "matrix dimensions must be between 1 and 4");
-
 					return false;
 				}
 
 				type.rows = _token.literal_as_int;
 
 				if (!(expect(',') && expect(tokenid::int_literal)))
-				{
 					return false;
-				}
 
 				if (_token.literal_as_int < 1 || _token.literal_as_int > 4)
 				{
 					error(_token.location, 3053, "matrix dimensions must be between 1 and 4");
-
 					return false;
 				}
 
 				type.cols = _token.literal_as_int;
 
 				if (!expect('>'))
-				{
 					return false;
-				}
 			}
+
+			return true;
 		}
-		else
+
+		switch (_token_next.id)
 		{
-			type.rows = type.cols = 0;
-
-			switch (_token_next.id)
-			{
-				case tokenid::void_:
-					type.basetype = type_node::datatype_void;
-					break;
-				case tokenid::bool_:
-					type.rows = 1, type.cols = 1;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool2:
-					type.rows = 2, type.cols = 1;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool2x2:
-					type.rows = 2, type.cols = 2;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool3:
-					type.rows = 3, type.cols = 1;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool3x3:
-					type.rows = 3, type.cols = 3;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool4:
-					type.rows = 4, type.cols = 1;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::bool4x4:
-					type.rows = 4, type.cols = 4;
-					type.basetype = type_node::datatype_bool;
-					break;
-				case tokenid::int_:
-					type.rows = 1, type.cols = 1;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int2:
-					type.rows = 2, type.cols = 1;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int2x2:
-					type.rows = 2, type.cols = 2;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int3:
-					type.rows = 3, type.cols = 1;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int3x3:
-					type.rows = 3, type.cols = 3;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int4:
-					type.rows = 4, type.cols = 1;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::int4x4:
-					type.rows = 4, type.cols = 4;
-					type.basetype = type_node::datatype_int;
-					break;
-				case tokenid::uint_:
-					type.rows = 1, type.cols = 1;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint2:
-					type.rows = 2, type.cols = 1;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint2x2:
-					type.rows = 2, type.cols = 2;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint3:
-					type.rows = 3, type.cols = 1;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint3x3:
-					type.rows = 3, type.cols = 3;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint4:
-					type.rows = 4, type.cols = 1;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::uint4x4:
-					type.rows = 4, type.cols = 4;
-					type.basetype = type_node::datatype_uint;
-					break;
-				case tokenid::float_:
-					type.rows = 1, type.cols = 1;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float2:
-					type.rows = 2, type.cols = 1;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float2x2:
-					type.rows = 2, type.cols = 2;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float3:
-					type.rows = 3, type.cols = 1;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float3x3:
-					type.rows = 3, type.cols = 3;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float4:
-					type.rows = 4, type.cols = 1;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::float4x4:
-					type.rows = 4, type.cols = 4;
-					type.basetype = type_node::datatype_float;
-					break;
-				case tokenid::string_:
-					type.basetype = type_node::datatype_string;
-					break;
-				case tokenid::texture:
-					type.basetype = type_node::datatype_texture;
-					break;
-				case tokenid::sampler:
-					type.basetype = type_node::datatype_sampler;
-					break;
-				default:
-					return false;
-			}
-
-			consume();
+		case tokenid::void_:
+			type.base = spv::OpTypeVoid;
+			break;
+		case tokenid::bool_:
+		case tokenid::bool2:
+		case tokenid::bool3:
+		case tokenid::bool4:
+			type.base = spv::OpTypeBool;
+			type.size = 32;
+			type.rows = 1 + uint32_t(_token_next.id) - uint32_t(tokenid::bool_);
+			type.cols = 1;
+			break;
+		case tokenid::bool2x2:
+		case tokenid::bool3x3:
+		case tokenid::bool4x4:
+			type.base = spv::OpTypeBool;
+			type.size = 32;
+			type.rows = 2 + uint32_t(_token_next.id) - uint32_t(tokenid::bool2x2);
+			type.cols = type.rows;
+			break;
+		case tokenid::int_:
+		case tokenid::int2:
+		case tokenid::int3:
+		case tokenid::int4:
+			type.base = spv::OpTypeInt;
+			type.size = 32;
+			type.rows = 1 + uint32_t(_token_next.id) - uint32_t(tokenid::int_);
+			type.cols = 1;
+			type.is_signed = true;
+			break;
+		case tokenid::int2x2:
+		case tokenid::int3x3:
+		case tokenid::int4x4:
+			type.base = spv::OpTypeInt;
+			type.size = 32;
+			type.rows = 2 + uint32_t(_token_next.id) - uint32_t(tokenid::int2x2);
+			type.cols = type.rows;
+			type.is_signed = true;
+			break;
+		case tokenid::uint_:
+		case tokenid::uint2:
+		case tokenid::uint3:
+		case tokenid::uint4:
+			type.base = spv::OpTypeInt;
+			type.size = 32;
+			type.rows = 1 + uint32_t(_token_next.id) - uint32_t(tokenid::uint_);
+			type.cols = 1;
+			type.is_signed = false;
+			break;
+		case tokenid::uint2x2:
+		case tokenid::uint3x3:
+		case tokenid::uint4x4:
+			type.base = spv::OpTypeInt;
+			type.size = 32;
+			type.rows = 2 + uint32_t(_token_next.id) - uint32_t(tokenid::uint2x2);
+			type.cols = type.rows;
+			type.is_signed = false;
+			break;
+		case tokenid::float_:
+		case tokenid::float2:
+		case tokenid::float3:
+		case tokenid::float4:
+			type.base = spv::OpTypeFloat;
+			type.size = 32;
+			type.rows = 1 + uint32_t(_token_next.id) - uint32_t(tokenid::float_);
+			type.cols = 1;
+			type.is_signed = true;
+			break;
+		case tokenid::float2x2:
+		case tokenid::float3x3:
+		case tokenid::float4x4:
+			type.base = spv::OpTypeFloat;
+			type.size = 32;
+			type.rows = 2 + uint32_t(_token_next.id) - uint32_t(tokenid::float2x2);
+			type.cols = type.rows;
+			type.is_signed = true;
+			break;
+		case tokenid::string_:
+			type.base = spv::OpString;
+			break;
+		case tokenid::texture:
+			type.base = spv::OpImage;
+			break;
+		case tokenid::sampler:
+			type.base = spv::OpSampledImage;
+			break;
+		default:
+			return false;
 		}
+
+		consume();
 
 		return true;
 	}
-	bool parser::accept_type_qualifiers(type_node &type)
+	bool parser::accept_type_qualifiers(type_info &type)
 	{
 		unsigned int qualifiers = 0;
 
 		// Storage
 		if (accept(tokenid::extern_))
-		{
-			qualifiers |= type_node::qualifier_extern;
-		}
+			qualifiers |= qualifier_extern;
 		if (accept(tokenid::static_))
-		{
-			qualifiers |= type_node::qualifier_static;
-		}
+			qualifiers |= qualifier_static;
 		if (accept(tokenid::uniform_))
-		{
-			qualifiers |= type_node::qualifier_uniform;
-		}
+			qualifiers |= qualifier_uniform;
 		if (accept(tokenid::volatile_))
-		{
-			qualifiers |= type_node::qualifier_volatile;
-		}
+			qualifiers |= qualifier_volatile;
 		if (accept(tokenid::precise))
-		{
-			qualifiers |= type_node::qualifier_precise;
-		}
+			qualifiers |= qualifier_precise;
 
 		if (accept(tokenid::in))
-		{
-			qualifiers |= type_node::qualifier_in;
-		}
+			qualifiers |= qualifier_in;
 		if (accept(tokenid::out))
-		{
-			qualifiers |= type_node::qualifier_out;
-		}
+			qualifiers |= qualifier_out;
 		if (accept(tokenid::inout))
-		{
-			qualifiers |= type_node::qualifier_inout;
-		}
+			qualifiers |= qualifier_inout;
 
 		// Modifiers
 		if (accept(tokenid::const_))
-		{
-			qualifiers |= type_node::qualifier_const;
-		}
+			qualifiers |= qualifier_const;
 
 		// Interpolation
 		if (accept(tokenid::linear))
-		{
-			qualifiers |= type_node::qualifier_linear;
-		}
+			qualifiers |= qualifier_linear;
 		if (accept(tokenid::noperspective))
-		{
-			qualifiers |= type_node::qualifier_noperspective;
-		}
+			qualifiers |= qualifier_noperspective;
 		if (accept(tokenid::centroid))
-		{
-			qualifiers |= type_node::qualifier_centroid;
-		}
+			qualifiers |= qualifier_centroid;
 		if (accept(tokenid::nointerpolation))
-		{
-			qualifiers |= type_node::qualifier_nointerpolation;
-		}
+			qualifiers |= qualifier_nointerpolation;
 
 		if (qualifiers == 0)
-		{
 			return false;
-		}
 		if ((type.qualifiers & qualifiers) == qualifiers)
-		{
 			warning(_token.location, 3048, "duplicate usages specified");
-		}
 
 		type.qualifiers |= qualifiers;
 
@@ -870,7 +684,8 @@ namespace reshadefx
 
 		return true;
 	}
-	bool parser::parse_type(type_node &type)
+
+	bool parser::parse_type(type_info &type)
 	{
 		type.qualifiers = 0;
 
@@ -879,21 +694,16 @@ namespace reshadefx
 		const auto location = _token_next.location;
 
 		if (!accept_type_class(type))
-		{
 			return false;
-		}
 
-		if (type.is_integral() && (type.has_qualifier(type_node::qualifier_centroid) || type.has_qualifier(type_node::qualifier_noperspective)))
+		if (type.is_integral() && (type.has(qualifier_centroid) || type.has(qualifier_noperspective)))
 		{
 			error(location, 4576, "signature specifies invalid interpolation mode for integer component type");
-
 			return false;
 		}
 
-		if (type.has_qualifier(type_node::qualifier_centroid) && !type.has_qualifier(type_node::qualifier_noperspective))
-		{
-			type.qualifiers |= type_node::qualifier_linear;
-		}
+		if (type.has(qualifier_centroid) && !type.has(qualifier_noperspective))
+			type.qualifiers |= qualifier_linear;
 
 		return true;
 	}
@@ -1079,68 +889,79 @@ namespace reshadefx
 		return true;
 	}
 
-	bool parser::parse_expression(spv_section &section, spv::Id &node_id)
+	bool parser::parse_expression(spv_section &section, spv::Id &node_id, type_info &type)
 	{
-		if (!parse_expression_assignment(section, node_id))
+		if (!parse_expression_assignment(section, node_id, type))
 			return false;
 
 		// Continue parsing if an expression sequence is next
-		// The last expression is the result, so keep on passing in 'node_id'
+		// Overwrite the node and type since the last expression is the result
 		while (accept(','))
-			if (!parse_expression_assignment(section, node_id))
+			if (!parse_expression_assignment(section, node_id, type))
 				return false;
 
 		return true;
 	}
-	bool parser::parse_expression_unary(spv_section &section, spv::Id &node_id)
+	bool parser::parse_expression_unary(spv_section &section, spv::Id &node_id, type_info &type)
 	{
-		type_node type;
-		spv::Op op;
 		auto location = _token_next.location;
 
 		#pragma region Prefix
-		if (accept_unary_op(op))
+		if (spv::Op op; accept_unary_op(op))
 		{
-			if (!parse_expression_unary(section, node_id))
-			{
+			if (!parse_expression_unary(section, node_id, type))
 				return false;
-			}
 
-			const auto &node = lookup_id(node_id);
-
-			if (!node.type.is_scalar() && !node.type.is_vector() && !node.type.is_matrix())
+			if (!type.is_scalar() && !type.is_vector() && !type.is_matrix())
 			{
-				error(node.location, 3022, "scalar, vector, or matrix expected");
+				error(lookup_id(node_id).location, 3022, "scalar, vector, or matrix expected");
 				return false;
 			}
 
 			if (op != spv::OpNop)
 			{
-				spv::Id right = 0;
-
-				if (op == spv::OpNot && !node.type.is_integral())
+				if (op == spv::OpNot && !type.is_integral())
 				{
-					error(node.location, 3082, "int or unsigned int type required");
-
-					return false;
-				}
-				else if ((op == spv::OpFAdd || op == spv::OpFSub) && (node.type.has_qualifier(type_node::qualifier_const) || node.type.has_qualifier(type_node::qualifier_uniform)))
-				{
-					right = literal_1_float; // TODO
-					error(node.location, 3025, "l-value specifies const object");
+					error(lookup_id(node_id).location, 3082, "int or unsigned int type required");
 					return false;
 				}
 
-				auto &newexpression = add_node(section, location, op, node.result_type);
-				newexpression.add(node_id);
-				newexpression.add(right);
+				spv::Id pointer_id = node_id;
 
-				newexpression.type = lookup_id(node_id).type;
+				if (type.is_pointer)
+				{
+					type.is_pointer = false;
 
-				node_id = fold_constant_expression(newexpression.result);
+					node_id = add_node(section, location, spv::OpLoad, convert_type(type));
+					lookup_id(node_id)
+						.add(pointer_id);
+				}
+
+				spv::Id new_node = add_node(section, location, op, convert_type(type));
+				lookup_id(new_node)
+					.add(node_id);
+
+				if (op == spv::OpFAdd || op == spv::OpFSub)
+				{
+					if (type.has(qualifier_const) || type.has(qualifier_uniform))
+					{
+						error(location, 3025, "l-value specifies const object");
+						return false;
+					}
+
+					spv::Id constant_id = convert_constant(type, 1u);
+
+					lookup_id(new_node)
+						.add(constant_id);
+
+					// The "++" and "--" operands modify the source variable, so store result back into it
+					add_node_without_result(section, location, spv::OpStore)
+						.add(pointer_id) // Pointer
+						.add(node_id); // Object
+				}
+
+				node_id = new_node;
 			}
-
-			type = lookup_id(node_id).type;
 		}
 		else if (accept('('))
 		{
@@ -1154,48 +975,60 @@ namespace reshadefx
 				}
 				else if (expect(')'))
 				{
-					if (!parse_expression_unary(section, node_id))
-					{
+					type_info rtype;
+
+					if (!parse_expression_unary(section, node_id, rtype))
 						return false;
-					}
 
-					const auto &node = lookup_id(node_id);
-
-					if (node.type.basetype == type.basetype && (node.type.rows == type.rows && node.type.cols == type.cols) && !(node.type.is_array() || type.is_array()))
+					if (rtype.base == type.base && (rtype.rows == type.rows && rtype.cols == type.cols) && !(rtype.is_array() || type.is_array()))
 					{
 						return true;
 					}
-					else if (node.type.is_numeric() && type.is_numeric())
+					else if (rtype.is_numeric() && type.is_numeric())
 					{
-						if ((node.type.rows < type.rows || node.type.cols < type.cols) && !node.type.is_scalar())
+						if ((rtype.rows < type.rows || rtype.cols < type.cols) && !rtype.is_scalar())
 						{
 							error(location, 3017, "cannot convert these vector types");
 							return false;
 						}
 
-						if (node.type.rows > type.rows || node.type.cols > type.cols)
+						spv::Id pointer_id = node_id;
+
+						if (rtype.is_pointer)
 						{
-							warning(location, 3206, "implicit truncation of vector type");
+							rtype.is_pointer = false;
+
+							node_id = add_node(section, location, spv::OpLoad, convert_type(rtype));
+							lookup_id(node_id)
+								.add(pointer_id);
 						}
 
-						//auto &castexpression = _ast.make_node<unary_expression_node>(location);
-						//type.qualifiers = type_node::qualifier_const;
-						//castexpression->type = type;
-						//castexpression->op = unary_expression_node::cast;
-						//castexpression->operand = node;
+						if (rtype.rows > type.rows || rtype.cols > type.cols)
+						{
+							warning(location, 3206, "implicit truncation of vector type");
 
-						//node = fold_constant_expression(_ast, castexpression.result);
+							// TODO
+							return false;
+						}
+						else
+						{
+							// TODO
+							const spv::Op op = type.is_floating_point() ?
+								spv::OpConvertSToF :
+								spv::OpConvertFToS;
 
-						//return true;
-						// TODO
-						error(location, 0, "CAST NOT IMPLEMENTED");
+							spv::Id new_node = add_node(section, location, op, convert_type(type));
+							lookup_id(new_node)
+								.add(node_id);
 
-						return false;
+							node_id = new_node;
+						}
+
+						return true;
 					}
 					else
 					{
 						error(location, 3017, "cannot convert non-numeric types");
-
 						return false;
 					}
 				}
@@ -1205,71 +1038,56 @@ namespace reshadefx
 				}
 			}
 
-			if (!parse_expression(section, node_id))
+			if (!parse_expression(section, node_id, type))
 				return false;
 
 			if (!expect(')'))
 				return false;
-
-			type = lookup_id(node_id).type;
 		}
 		else if (accept(tokenid::true_literal))
 		{
-			auto &literal = add_node(_variables, location, spv::OpConstantTrue, type_bool);
+			type = { spv::OpTypeBool, 32, 1, 1, false, false, qualifier_const };
 
-			literal.type.basetype = type_node::datatype_bool;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
-
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_variables, location, spv::OpConstantTrue, convert_type(type));
 		}
 		else if (accept(tokenid::false_literal))
 		{
-			auto &literal = add_node(_variables, location, spv::OpConstantFalse, type_bool);
+			type = { spv::OpTypeBool, 32, 1, 1, false, false, qualifier_const };
 
-			literal.type.basetype = type_node::datatype_bool;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
-
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_variables, location, spv::OpConstantFalse, convert_type(type));
 		}
 		else if (accept(tokenid::int_literal))
 		{
-			auto &literal = add_node(_variables, location, spv::OpConstant, type_int);
-			literal.add(_token.literal_as_int);
+			type = { spv::OpTypeInt, 32, 1, 1, true, false, qualifier_const };
 
-			literal.type.basetype = type_node::datatype_int;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
-
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_variables, location, spv::OpConstant, convert_type(type));
+			lookup_id(node_id)
+				.add(_token.literal_as_int);
 		}
 		else if (accept(tokenid::uint_literal))
 		{
-			auto &literal = add_node(_variables, location, spv::OpConstant, type_uint);
-			literal.add(_token.literal_as_uint);
+			type = { spv::OpTypeInt, 32, 1, 1, false, false, qualifier_const };
 
-			literal.type.basetype = type_node::datatype_uint;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
-
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_variables, location, spv::OpConstant, convert_type(type));
+			lookup_id(node_id)
+				.add(_token.literal_as_uint);
 		}
 		else if (accept(tokenid::float_literal))
 		{
-			auto &literal = add_node(_variables, location, spv::OpConstant, type_float);
-			literal.add(_token.literal_as_uint); // Interpret float bit pattern as int
+			type = { spv::OpTypeFloat, 32, 1, 1, true, false, qualifier_const };
 
-			literal.type.basetype = type_node::datatype_float;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
+			node_id = add_node(_variables, location, spv::OpConstant, convert_type(type));
+			lookup_id(node_id)
+				.add(reinterpret_cast<const uint32_t *>(&_token.literal_as_float)[0]); // Interpret float bit pattern as int
+		}
+		else if (accept(tokenid::double_literal))
+		{
+			type = { spv::OpTypeFloat, 64, 1, 1, true, false, qualifier_const };
 
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_variables, location, spv::OpConstant, convert_type(type));
+			lookup_id(node_id)
+				.add(reinterpret_cast<const uint32_t *>(&_token.literal_as_double)[0]) // Interpret float bit pattern as int
+				.add(reinterpret_cast<const uint32_t *>(&_token.literal_as_double)[1]);
 		}
 		else if (accept(tokenid::string_literal))
 		{
@@ -1280,114 +1098,86 @@ namespace reshadefx
 				value += _token.literal_as_string;
 			}
 
-			if (value.size() / 4 >= 5)
-			{
-				error(location, 0, "STRING TOO BIG");
-				return false;
-			}
+			type = { spv::OpString, 0, 0, 0, false, false, qualifier_const };
 
-			auto &literal = add_node(_strings, location, spv::OpString);
-			literal.add_string(value.c_str());
-
-			literal.type.basetype = type_node::datatype_string;
-			literal.type.qualifiers = type_node::qualifier_const;
-			literal.type.rows = literal.type.cols = 0, literal.type.array_length = 0;
-
-			node_id = literal.result;
-			type = literal.type;
+			node_id = add_node(_strings, location, spv::OpString);
+			lookup_id(node_id)
+				.add_string(value.c_str());
 		}
 		else if (accept_type_class(type))
 		{
 			if (!expect('('))
-			{
 				return false;
-			}
 
 			if (!type.is_numeric())
 			{
 				error(location, 3037, "constructors only defined for numeric base types");
-
 				return false;
 			}
 
 			if (accept(')'))
 			{
 				error(location, 3014, "incorrect number of arguments to numeric-type constructor");
-
 				return false;
 			}
 
-			auto &constructor = add_node(section, location, spv::OpCompositeConstruct, 0xFF); // TODO
-			error(location, 0, "NOT IMPLEMENTED");
-			return false;
-#if 0
-			constructor.type = type;
-			constructor.type.qualifiers = type_node::qualifier_const;
-
 			unsigned int num_elements = 0;
-			unsigned int num_arguments = 0;
+			std::vector<spv::Id> arguments;
 
 			while (!peek(')'))
 			{
-				if (num_arguments != 0 && !expect(','))
+				if (!arguments.empty() && !expect(','))
+					return false;
+
+				spv::Id arg_id = 0;
+				type_info arg_type;
+
+				if (!parse_expression_assignment(section, arg_id, arg_type))
+					return false;
+
+				if (!arg_type.is_numeric())
 				{
+					error(lookup_id(arg_id).location, 3017, "cannot convert non-numeric types");
 					return false;
 				}
 
-				spv::Id argument = 0;
-
-				if (!parse_expression_assignment(argument))
+				if (arg_type.base != type.base)
 				{
-					return false;
+					type_info target_type = type;
+					target_type.rows = arg_type.rows;
+					target_type.cols = arg_type.cols;
+
+					// Do implicit conversion
+					arg_id = add_cast_node(section, lookup_id(arg_id).location, arg_type, target_type, arg_id);
 				}
 
-				if (!lookup_id(argument).type.is_numeric())
-				{
-					error(lookup_id(argument).location, 3017, "cannot convert non-numeric types");
+				num_elements += arg_type.rows * arg_type.cols;
 
-					return false;
-				}
-
-				num_elements += lookup_id(argument).type.rows * lookup_id(argument).type.cols;
-
-				constructor.operands[num_arguments++] = argument;
+				arguments.push_back(arg_id);
 			}
 
 			if (!expect(')'))
-			{
 				return false;
-			}
 
 			if (num_elements != type.rows * type.cols)
 			{
 				error(location, 3014, "incorrect number of arguments to numeric-type constructor");
-
 				return false;
 			}
 
-			if (num_arguments > 1)
+			if (arguments.size() > 1)
 			{
-				node_id = constructor.result;
-				type = constructor.type;
+				type.qualifiers = qualifier_const;
+
+				node_id = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
+
+				for (size_t i = 0; i < arguments.size(); ++i)
+					lookup_id(node_id).add(arguments[i]);
 			}
 			else
 			{
-				// TODO
-				// OpConvertFToU OpConvertFToS OpConvertSToF OpConvertUToF OpUConvert OpSConvert OpFConvert
-
-				//const auto castexpression = _ast.make_node<unary_expression_node>(constructor->location);
-				//castexpression->type = type;
-				//castexpression->op = unary_expression_node::cast;
-				//castexpression->operand = constructor->arguments[0];
-
-				//node = castexpression;
-
-				error(location, 0, "CAST NOT IMPLEMENTED");
-				return false;
+				node_id = arguments[0];
 			}
-
-			node_id = fold_constant_expression(_ast, node_id);
-#endif
 		}
 		else
 		{
@@ -1419,9 +1209,7 @@ namespace reshadefx
 			while (accept(tokenid::colon_colon))
 			{
 				if (!expect(tokenid::identifier))
-				{
 					return false;
-				}
 
 				identifier += "::" + _token.literal_as_string;
 			}
@@ -1430,32 +1218,29 @@ namespace reshadefx
 
 			if (accept('('))
 			{
-				if (symbol && lookup_id(symbol).op != spv::OpFunction)
+				if (symbol.id && symbol.op != spv::OpFunction)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a variable, not a function");
 
 					return false;
 				}
 
-				std::vector<spv::Id> arguments;
-				std::vector<type_node> argument_types;
+				std::vector<spv::Id> args;
+				std::vector<type_info> argtypes;
 
 				while (!peek(')'))
 				{
-					if (!arguments.empty() && !expect(','))
-					{
+					if (!args.empty() && !expect(','))
 						return false;
-					}
 
-					spv::Id argument = 0;
+					spv::Id arg_id = 0;
+					type_info arg_type;
 
-					if (!parse_expression_assignment(section, argument))
-					{
+					if (!parse_expression_assignment(section, arg_id, arg_type))
 						return false;
-					}
 
-					arguments.push_back(std::move(argument));
-					argument_types.push_back(lookup_id(argument).type);
+					args.push_back(std::move(arg_id));
+					argtypes.push_back(std::move(arg_type));
 				}
 
 				if (!expect(')'))
@@ -1463,12 +1248,11 @@ namespace reshadefx
 					return false;
 				}
 
-				spv::Id return_type = 0;
-				bool undeclared = !!symbol, ambiguous = false;
+				bool undeclared = !!symbol.id, ambiguous = false;
 
-				if (!_symbol_table->resolve_call(identifier, argument_types, scope, ambiguous, op, symbol, return_type))
+				if (!_symbol_table->resolve_call(identifier, argtypes, scope, ambiguous, symbol))
 				{
-					if (undeclared && op == spv::OpFunctionCall)
+					if (undeclared && symbol.op == spv::OpFunctionCall)
 					{
 						error(location, 3004, "undeclared identifier '" + identifier + "'");
 					}
@@ -1484,84 +1268,73 @@ namespace reshadefx
 					return false;
 				}
 
-				if (op != spv::OpFunctionCall)
+				type = symbol.type;
+
+				if (symbol.op != spv::OpFunctionCall)
 				{
-					auto &newexpression = add_node(section, location, op, return_type);
+					node_id = add_node(section, location, symbol.op, convert_type(type));
 
-					if (op == spv::OpExtInst)
+					if (symbol.op == spv::OpExtInst)
 					{
-						newexpression.add(1); // GLSL extended instruction set
-						newexpression.add(symbol);
+						lookup_id(node_id).add(1); // GLSL extended instruction set
+						lookup_id(node_id).add(symbol.id);
 					}
 
-					for (size_t i = 0; i < arguments.size(); ++i)
+					for (size_t i = 0; i < args.size(); ++i)
 					{
-						newexpression.add(arguments[i]);
+						lookup_id(node_id).add(args[i]);
 					}
-
-					node_id = fold_constant_expression(newexpression.result);
 				}
 				else
 				{
 					const auto parent = _symbol_table->current_parent();
 
-					if (parent == symbol)
+					if (parent == symbol.id)
 					{
 						error(location, 3500, "recursive function calls are not allowed");
 
 						return false;
 					}
 
-					auto &callexpression = add_node(section, location, spv::OpFunctionCall, return_type);
-					callexpression.add(symbol);
+					node_id = add_node(section, location, spv::OpFunctionCall, convert_type(type));
+					lookup_id(node_id)
+						.add(symbol.id);
 
-					for (size_t i = 0; i < arguments.size(); ++i)
+					for (size_t i = 0; i < args.size(); ++i)
 					{
-						callexpression.add(arguments[i]);
+						lookup_id(node_id).add(args[i]);
 					}
-
-					node_id = callexpression.result;
 				}
 
-				type = lookup_id(node_id).type;
+				for (size_t i = 0; i < argtypes.size(); ++i)
+				{
+					const auto &arg_type = argtypes[i];
+					const auto &param_type = static_cast<const function_info *>(symbol.info)->parameter_list[i];
 
-				// TODO
-				//for (size_t i = 0; i < arguments.size(); ++i)
-				//{
-				//	const spv::Id argument = arguments[i];
-				//	const auto parameter = callexpression->callee->parameter_list[i];
-
-				//	if (argument->type.rows > parameter->type.rows || argument->type.cols > parameter->type.cols)
-				//	{
-				//		warning(argument->location, 3206, "implicit truncation of vector type");
-				//	}
-				//}
+					if (arg_type.rows > param_type.rows || arg_type.cols > param_type.cols)
+					{
+						warning(lookup_id(args[i]).location, 3206, "implicit truncation of vector type");
+					}
+				}
 			}
 			else
 			{
-				if (!symbol)
+				if (!symbol.id)
 				{
 					error(location, 3004, "undeclared identifier '" + identifier + "'");
-
 					return false;
 				}
-
-				if (lookup_id(symbol).op != spv::OpVariable)
+				else if (symbol.op != spv::OpVariable)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a function, not a variable");
-
 					return false;
 				}
 
-				// TODO Result
-				auto &newexpression = add_node(section, location, spv::OpLoad, 0xFF);
-				newexpression.add(symbol);
+				type = symbol.type;
 
-				//newexpression->reference = static_cast<const variable_declaration_node *>(symbol);
-				//newexpression->type = newexpression->reference->type;
+				assert(type.is_pointer);
 
-				node_id = fold_constant_expression(newexpression.result);
-				type = lookup_id(node_id).type;
+				node_id = symbol.id;
 			}
 		}
 		#pragma endregion
@@ -1571,40 +1344,49 @@ namespace reshadefx
 		{
 			location = _token_next.location;
 
-			if (accept_postfix_op(op))
+			if (spv::Op op; accept_postfix_op(op))
 			{
-				const auto &node = lookup_id(node_id);
-
 				if (!type.is_scalar() && !type.is_vector() && !type.is_matrix())
 				{
-					error(node.location, 3022, "scalar, vector, or matrix expected");
-
+					error(lookup_id(node_id).location, 3022, "scalar, vector, or matrix expected");
 					return false;
 				}
 
-				if (type.has_qualifier(type_node::qualifier_const) || type.has_qualifier(type_node::qualifier_uniform))
+				if (type.has(qualifier_const) || type.has(qualifier_uniform))
 				{
-					error(node.location, 3025, "l-value specifies const object");
-
+					error(lookup_id(node_id).location, 3025, "l-value specifies const object");
 					return false;
 				}
 
-				auto &newexpression = add_node(section, location, op, node.result_type);
-				newexpression.add(node_id);
-				newexpression.add(literal_1_float); // TODO
+				spv::Id pointer_id = node_id;
 
-				newexpression.type = type;
-				newexpression.type.qualifiers |= type_node::qualifier_const;
+				assert(type.is_pointer);
+				type.is_pointer = false;
 
-				node_id = newexpression.result;
-				type = newexpression.type;
+				node_id = add_node(section, location, spv::OpLoad, convert_type(type));
+				lookup_id(node_id)
+					.add(pointer_id);
+
+				type.qualifiers = qualifier_const;
+
+				spv::Id constant_id = convert_constant(type, 1u);
+
+				spv::Id new_node = add_node(section, location, op, convert_type(type));
+				lookup_id(new_node)
+					.add(node_id)
+					.add(constant_id); // TODO
+
+					// The "++" and "--" operands modify the source variable, so store result back into it
+				add_node_without_result(section, location, spv::OpStore)
+					.add(pointer_id) // Pointer
+					.add(node_id); // Object
+
+				node_id = new_node;
 			}
-			/*else if (accept('.'))
+			else if (accept('.'))
 			{
 				if (!expect(tokenid::identifier))
-				{
 					return false;
-				}
 
 				location = _token.location;
 				const auto subscript = _token.literal_as_string;
@@ -1612,20 +1394,14 @@ namespace reshadefx
 				if (accept('('))
 				{
 					if (!type.is_struct() || type.is_array())
-					{
 						error(location, 3087, "object does not have methods");
-					}
 					else
-					{
 						error(location, 3088, "structures do not have methods");
-					}
-
 					return false;
 				}
 				else if (type.is_array())
 				{
 					error(location, 3018, "invalid subscript on array");
-
 					return false;
 				}
 				else if (type.is_vector())
@@ -1635,7 +1411,6 @@ namespace reshadefx
 					if (length > 4)
 					{
 						error(location, 3018, "invalid subscript '" + subscript + "', swizzle too long");
-
 						return false;
 					}
 
@@ -1667,13 +1442,11 @@ namespace reshadefx
 						if (i > 0 && (set[i] != set[i - 1]))
 						{
 							error(location, 3018, "invalid subscript '" + subscript + "', mixed swizzle sets");
-
 							return false;
 						}
 						if (static_cast<unsigned int>(offsets[i]) >= type.rows)
 						{
 							error(location, 3018, "invalid subscript '" + subscript + "', swizzle out of range");
-
 							return false;
 						}
 
@@ -1687,23 +1460,24 @@ namespace reshadefx
 						}
 					}
 
-					const auto newexpression = _ast.make_node<swizzle_expression_node>(location);
-					newexpression->type = type;
-					newexpression->type.rows = static_cast<unsigned int>(length);
-					newexpression->operand = node;
-					newexpression->mask[0] = offsets[0];
-					newexpression->mask[1] = offsets[1];
-					newexpression->mask[2] = offsets[2];
-					newexpression->mask[3] = offsets[3];
+					type.rows = static_cast<unsigned int>(length);
 
-					if (constant || type.has_qualifier(type_node::qualifier_uniform))
+					if (constant || type.has(qualifier_uniform))
 					{
-						newexpression->type.qualifiers |= type_node::qualifier_const;
-						newexpression->type.qualifiers &= ~type_node::qualifier_uniform;
+						type.qualifiers |= qualifier_const;
+						type.qualifiers &= ~qualifier_uniform;
 					}
 
-					node = fold_constant_expression(_ast, newexpression);
-					type = node->type;
+					spv::Id new_node = add_node(section, location, spv::OpVectorShuffle, convert_type(type));
+					lookup_id(new_node)
+						.add(node_id) // Vector 1
+						.add(node_id); // Vector 2
+
+					for (size_t i = 0; i < length && offsets[i] >= 0; ++i)
+					{
+						lookup_id(new_node)
+							.add(offsets[i]);
+					}
 				}
 				else if (type.is_matrix())
 				{
@@ -1758,93 +1532,88 @@ namespace reshadefx
 						}
 					}
 
-					const auto newexpression = _ast.make_node<swizzle_expression_node>(_token.location);
-					newexpression->type = type;
-					newexpression->type.rows = static_cast<unsigned int>(length / (3 + set));
-					newexpression->type.cols = 1;
-					newexpression->operand = node;
-					newexpression->mask[0] = offsets[0];
-					newexpression->mask[1] = offsets[1];
-					newexpression->mask[2] = offsets[2];
-					newexpression->mask[3] = offsets[3];
+					type.rows = static_cast<unsigned int>(length / (3 + set));
+					type.cols = 1;
 
-					if (constant || type.has_qualifier(type_node::qualifier_uniform))
+					if (constant || type.has(qualifier_uniform))
 					{
-						newexpression->type.qualifiers |= type_node::qualifier_const;
-						newexpression->type.qualifiers &= ~type_node::qualifier_uniform;
+						type.qualifiers |= qualifier_const;
+						type.qualifiers &= ~qualifier_uniform;
 					}
 
-					node = fold_constant_expression(_ast, newexpression);
-					type = node->type;
+					type.is_pointer = true;
+
+					spv::Id new_node = add_node(section, location, spv::OpAccessChain, convert_type(type));
+					lookup_id(new_node)
+						.add(node_id) // Base
+						.add(-1); // TODO
+
+					node_id = new_node;
 				}
 				else if (type.is_struct())
 				{
-					variable_declaration_node *field = nullptr;
+					size_t field_index = 0;
 
-					for (auto currfield : type.definition->field_list)
+					for (const auto &currfield : _structs[type.definition].field_list)
 					{
-						if (currfield->name == subscript)
-						{
-							field = currfield;
+						if (currfield.first == subscript)
 							break;
-						}
+
+						++field_index;
 					}
 
-					if (field == nullptr)
+					if (field_index >= _structs[type.definition].field_list.size())
 					{
 						error(location, 3018, "invalid subscript '" + subscript + "'");
 
 						return false;
 					}
 
-					const auto newexpression = _ast.make_node<field_expression_node>(location);
-					newexpression->type = field->type;
-					newexpression->operand = node;
-					newexpression->field_reference = field;
+					type = _structs[type.definition].field_list[field_index].second;
 
-					if (type.has_qualifier(type_node::qualifier_uniform))
+					if (type.has(qualifier_uniform))
 					{
-						newexpression->type.qualifiers |= type_node::qualifier_const;
-						newexpression->type.qualifiers &= ~type_node::qualifier_uniform;
+						type.qualifiers |= qualifier_const;
+						type.qualifiers &= ~qualifier_uniform;
 					}
 
-					node = newexpression;
-					type = node->type;
+					type.is_pointer = true;
+
+					spv::Id field_index_id = convert_constant({ spv::OpTypeInt, 32, 1, 1, false }, field_index);
+
+					spv::Id new_node = add_node(section, location, spv::OpAccessChain, convert_type(type));
+					lookup_id(new_node)
+						.add(node_id) // Base
+						.add(field_index_id); // Indexes
+
+					node_id = new_node;
 				}
 				else if (type.is_scalar())
 				{
-					signed char offsets[4] = { -1, -1, -1, -1 };
 					const size_t length = subscript.size();
+
+					type.qualifiers |= qualifier_const;
+					type.rows = static_cast<unsigned int>(length);
+
+					spv::Id new_node = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
 
 					for (size_t i = 0; i < length; ++i)
 					{
 						if ((subscript[i] != 'x' && subscript[i] != 'r' && subscript[i] != 's') || i > 3)
 						{
 							error(location, 3018, "invalid subscript '" + subscript + "'");
-
 							return false;
 						}
 
-						offsets[i] = 0;
+						lookup_id(new_node)
+							.add(node_id);
 					}
 
-					const auto newexpression = _ast.make_node<swizzle_expression_node>(location);
-					newexpression->type = type;
-					newexpression->type.qualifiers |= type_node::qualifier_const;
-					newexpression->type.rows = static_cast<unsigned int>(length);
-					newexpression->operand = node;
-					newexpression->mask[0] = offsets[0];
-					newexpression->mask[1] = offsets[1];
-					newexpression->mask[2] = offsets[2];
-					newexpression->mask[3] = offsets[3];
-
-					node = newexpression;
-					type = node->type;
+					node_id = new_node;
 				}
 				else
 				{
 					error(location, 3018, "invalid subscript '" + subscript + "'");
-
 					return false;
 				}
 			}
@@ -1852,50 +1621,48 @@ namespace reshadefx
 			{
 				if (!type.is_array() && !type.is_vector() && !type.is_matrix())
 				{
-					error(node->location, 3121, "array, matrix, vector, or indexable object type expected in index expression");
-
+					error(_token.location, 3121, "array, matrix, vector, or indexable object type expected in index expression");
 					return false;
 				}
 
-				const auto newexpression = _ast.make_node<binary_expression_node>(location);
-				newexpression->type = type;
-				newexpression->op = binary_expression_node::element_extract;
-				newexpression->operands[0] = node;
+				spv::Id index_id = 0;
+				type_info index_type;
 
-				if (!parse_expression(newexpression->operands[1]))
-				{
+				if (!parse_expression(section, index_id, index_type))
 					return false;
-				}
 
-				if (!newexpression->operands[1]->type.is_scalar())
+				if (!index_type.is_scalar())
 				{
-					error(newexpression->operands[1]->location, 3120, "invalid type for index - index must be a scalar");
-
+					error(lookup_id(index_id).location, 3120, "invalid type for index - index must be a scalar");
 					return false;
 				}
 
 				if (type.is_array())
 				{
-					newexpression->type.array_length = 0;
+					type.array_length = 0;
 				}
 				else if (type.is_matrix())
 				{
-					newexpression->type.rows = newexpression->type.cols;
-					newexpression->type.cols = 1;
+					type.rows = type.cols;
+					type.cols = 1;
 				}
 				else if (type.is_vector())
 				{
-					newexpression->type.rows = 1;
+					type.rows = 1;
 				}
 
-				node = fold_constant_expression(_ast, newexpression);
-				type = node->type;
+				type.is_pointer = true;
+
+				spv::Id new_node = add_node(section, location, spv::OpAccessChain, convert_type(type));
+				lookup_id(new_node)
+					.add(node_id) // Base
+					.add(index_id); // Indexes
+
+				node_id = new_node;
 
 				if (!expect(']'))
-				{
 					return false;
-				}
-			}*/
+			}
 			else
 			{
 				break;
@@ -1905,12 +1672,10 @@ namespace reshadefx
 
 		return true;
 	}
-	bool parser::parse_expression_multary(spv_section &section, spv::Id &left_id, unsigned int left_precedence)
+	bool parser::parse_expression_multary(spv_section &section, spv::Id &node_id, type_info &type, unsigned int left_precedence)
 	{
-		if (!parse_expression_unary(section, left_id))
-		{
+		if (!parse_expression_unary(section, node_id, type))
 			return false;
-		}
 
 		spv::Op op;
 		unsigned int right_precedence;
@@ -1918,45 +1683,40 @@ namespace reshadefx
 		while (peek_multary_op(op, right_precedence))
 		{
 			if (right_precedence <= left_precedence)
-			{
 				break;
-			}
 
 			consume();
 
 			bool boolean = false;
-			spv::Id right_id = 0, right2_id = 0;
+			spv::Id left_id = node_id;
+			spv::Id right_id = 0;
+			type_info ltype = type, rtype;
 
 			if (op != spv::OpSelect)
 			{
-				if (!parse_expression_multary(section, right_id, right_precedence))
-				{
+				if (!parse_expression_multary(section, right_id, rtype, right_precedence))
 					return false;
-				}
-
-				const auto &left = lookup_id(left_id);
-				const auto &right = lookup_id(right_id);
 
 				if (op == spv::OpFOrdEqual || op == spv::OpFOrdNotEqual)
 				{
 					boolean = true;
 
-					if (left.type.is_array() || right.type.is_array() || left.type.definition != right.type.definition)
+					if (ltype.is_array() || rtype.is_array() || ltype.definition != rtype.definition)
 					{
-						error(right.location, 3020, "type mismatch");
+						error(lookup_id(right_id).location, 3020, "type mismatch");
 						return false;
 					}
 				}
 				else if (op == spv::OpBitwiseAnd || op == spv::OpBitwiseOr || op == spv::OpBitwiseXor)
 				{
-					if (!left.type.is_integral())
+					if (!ltype.is_integral())
 					{
-						error(left.location, 3082, "int or unsigned int type required");
+						error(lookup_id(left_id).location, 3082, "int or unsigned int type required");
 						return false;
 					}
-					if (!right.type.is_integral())
+					if (!rtype.is_integral())
 					{
-						error(right.location, 3082, "int or unsigned int type required");
+						error(lookup_id(right_id).location, 3082, "int or unsigned int type required");
 						return false;
 					}
 				}
@@ -1966,147 +1726,205 @@ namespace reshadefx
 						op == spv::OpFOrdLessThan || op == spv::OpFOrdGreaterThan ||
 						op == spv::OpFOrdLessThanEqual || op == spv::OpFOrdGreaterThanEqual;
 
-					if (!left.type.is_scalar() && !left.type.is_vector() && !left.type.is_matrix())
+					if (!ltype.is_scalar() && !ltype.is_vector() && !ltype.is_matrix())
 					{
-						error(left.location, 3022, "scalar, vector, or matrix expected");
+						error(lookup_id(left_id).location, 3022, "scalar, vector, or matrix expected");
 						return false;
 					}
-					if (!right.type.is_scalar() && !right.type.is_vector() && !right.type.is_matrix())
+					if (!rtype.is_scalar() && !rtype.is_vector() && !rtype.is_matrix())
 					{
-						error(right.location, 3022, "scalar, vector, or matrix expected");
+						error(lookup_id(right_id).location, 3022, "scalar, vector, or matrix expected");
 						return false;
 					}
 				}
 
-				auto &newexpression = add_node(section, left.location, op, 0); // TODO Result Type
-				newexpression.add(left_id);
-				newexpression.add(right_id);
+				type = { boolean ? spv::OpTypeBool : std::max(ltype.base, rtype.base) }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
 
-				right2_id = right_id;
-				right_id = left_id;
-				left_id = newexpression.result;
+				if (type.base != ltype.base)
+					left_id = add_cast_node(section, lookup_id(left_id).location, ltype, type, left_id);
+				if (type.base != rtype.base)
+					right_id = add_cast_node(section, lookup_id(right_id).location, rtype, type, right_id);
+
+				if ((ltype.rows == 1 && ltype.cols == 1) || (rtype.rows == 1 && rtype.cols == 1))
+				{
+					type.rows = std::max(ltype.rows, rtype.rows);
+					type.cols = std::max(ltype.cols, rtype.cols);
+
+					if (ltype.rows > 1 || ltype.cols > 1)
+					{
+						spv::Id composite_node = add_node(section, lookup_id(left_id).location, spv::OpCompositeConstruct, convert_type(type));
+
+						for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
+							lookup_id(composite_node)
+								.add(left_id);
+
+						left_id = composite_node;
+					}
+					if (rtype.rows > 1 || rtype.cols > 1)
+					{
+						spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(type));
+
+						for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
+							lookup_id(composite_node)
+								.add(right_id);
+
+						right_id = composite_node;
+					}
+				}
+				else
+				{
+					type.rows = std::min(ltype.rows, rtype.rows);
+					type.cols = std::min(ltype.cols, rtype.cols);
+
+					if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
+					{
+						warning(lookup_id(left_id).location, 3206, "implicit truncation of vector type");
+					}
+					if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+					{
+						warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
+					}
+				}
+
+				spv::Id new_node = add_node(section, lookup_id(left_id).location, op, convert_type(type));
+				lookup_id(new_node)
+					.add(left_id)
+					.add(right_id);
+
+				node_id = new_node;
 			}
 			else
 			{
-				const auto &left = lookup_id(left_id);
-
-				if (!left.type.is_scalar() && !left.type.is_vector())
+				if (!ltype.is_scalar() && !ltype.is_vector())
 				{
-					error(left.location, 3022, "boolean or vector expression expected");
+					error(lookup_id(node_id).location, 3022, "boolean or vector expression expected");
 					return false;
 				}
 
-				if (!(parse_expression(section, right_id) && expect(':') && parse_expression_assignment(section, right2_id)))
+				if (!(parse_expression(section, left_id, ltype) && expect(':') && parse_expression_assignment(section, right_id, rtype)))
+					return false;
+
+				if (ltype.is_array() || rtype.is_array() || ltype.definition != rtype.definition)
 				{
+					error(lookup_id(node_id).location, 3020, "type mismatch between conditional values");
 					return false;
 				}
 
-				const auto &right1 = lookup_id(right_id);
-				const auto &right2 = lookup_id(right2_id);
+				type = { std::max(ltype.base, rtype.base) }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
 
-				if (right1.type.is_array() || right2.type.is_array() || right1.type.definition != right2.type.definition)
+				if ((ltype.rows == 1 && ltype.cols == 1) || (rtype.rows == 1 && rtype.cols == 1))
 				{
-					error(right1.location, 3020, "type mismatch between conditional values");
-					return false;
+					type.rows = std::max(ltype.rows, rtype.rows);
+					type.cols = std::max(ltype.cols, rtype.cols);
+				}
+				else
+				{
+					type.rows = std::min(ltype.rows, rtype.rows);
+					type.cols = std::min(ltype.cols, rtype.cols);
+
+					if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
+					{
+						warning(lookup_id(left_id).location, 3206, "implicit truncation of vector type");
+					}
+					if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+					{
+						warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
+					}
 				}
 
-				auto &newexpression = add_node(section, lookup_id(left_id).location, spv::OpSelect, 0); // TODO Result Type
-				newexpression.add(left_id);
-				newexpression.add(right_id);
-				newexpression.add(right2_id);
+				spv::Id new_node = add_node(section, lookup_id(node_id).location, spv::OpSelect, convert_type(type));
+				lookup_id(new_node)
+					.add(node_id)
+					.add(left_id)
+					.add(right_id);
 
-				left_id = newexpression.result;
+				node_id = new_node;
 			}
-
-			auto &result = lookup_id(left_id);
-			const auto &right1 = lookup_id(right_id);
-			const auto &right2 = lookup_id(right2_id);
-
-			result.type.basetype = boolean ? type_node::datatype_bool : std::max(right1.type.basetype, right2.type.basetype);
-
-			if ((right1.type.rows == 1 && right1.type.cols == 1) || (right2.type.rows == 1 && right2.type.cols == 1))
-			{
-				result.type.rows = std::max(right1.type.rows, right2.type.rows);
-				result.type.cols = std::max(right1.type.cols, right2.type.cols);
-			}
-			else
-			{
-				result.type.rows = std::min(right1.type.rows, right2.type.rows);
-				result.type.cols = std::min(right1.type.cols, right2.type.cols);
-
-				if (right1.type.rows > right2.type.rows || right1.type.cols > right2.type.cols)
-				{
-					warning(right1.location, 3206, "implicit truncation of vector type");
-				}
-				if (right2.type.rows > right1.type.rows || right2.type.cols > right1.type.cols)
-				{
-					warning(right2.location, 3206, "implicit truncation of vector type");
-				}
-			}
-
-			result.result_type = 0; // TODO
-
-			left_id = fold_constant_expression(left_id);
 		}
 
 		return true;
 	}
-	bool parser::parse_expression_assignment(spv_section &section, spv::Id &left_id)
+	bool parser::parse_expression_assignment(spv_section &section, spv::Id &node_id, type_info &type)
 	{
-		if (!parse_expression_multary(section, left_id))
-		{
+		if (!parse_expression_multary(section, node_id, type))
 			return false;
-		}
 
-		spv::Op op;
-
-		if (accept_assignment_op(op))
+		if (spv::Op op; accept_assignment_op(op))
 		{
 			spv::Id right_id = 0;
+			type_info &ltype = type, rtype;
 
-			if (!parse_expression_multary(section, right_id))
+			if (!parse_expression_multary(section, right_id, rtype))
+				return false;
+
+			if (ltype.has(qualifier_const) || ltype.has(qualifier_uniform))
 			{
+				error(lookup_id(node_id).location, 3025, "l-value specifies const object");
 				return false;
 			}
 
-			const auto &left = lookup_id(left_id);
-			const auto &right = lookup_id(right_id);
-
-			if (left.type.has_qualifier(type_node::qualifier_const) || left.type.has_qualifier(type_node::qualifier_uniform))
+			if (ltype.is_array() || rtype.is_array() || !type_info::rank(ltype, rtype))
 			{
-				error(left.location, 3025, "l-value specifies const object");
+				error(lookup_id(right_id).location, 3020, "cannot convert these types");
 				return false;
 			}
 
-			if (left.type.is_array() || right.type.is_array() || !type_node::rank(left.type, right.type))
+			if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
 			{
-				error(right.location, 3020, "cannot convert these types");
-				return false;
+				rtype.rows = ltype.rows;
+				rtype.cols = ltype.cols;
+
+				spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(rtype));
+
+				for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
+					lookup_id(composite_node)
+					.add(right_id);
+
+				right_id = composite_node;
+			}
+			if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+			{
+				warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
 			}
 
-			if (right.type.rows > left.type.rows || right.type.cols > left.type.cols)
+			assert(ltype.is_pointer);
+
+			ltype.is_pointer = false;
+
+			if (rtype.base != ltype.base)
 			{
-				warning(right.location, 3206, "implicit truncation of vector type");
+				right_id = add_cast_node(section, lookup_id(right_id).location, rtype, ltype, right_id);
 			}
 
 			if (op != spv::OpNop)
 			{
-				auto &newexpression = add_node(section, left.location, op, left.result_type);
-				newexpression.add(left_id);
-				newexpression.add(right_id);
+				spv::Id left_id = add_node(section, lookup_id(node_id).location, spv::OpLoad, convert_type(ltype));
+				lookup_id(left_id)
+					.add(node_id);
 
-				newexpression.type = lookup_id(left_id).type;
+				if (rtype.is_pointer)
+				{
+					rtype.is_pointer = false;
 
-				left_id = newexpression.result;
+					spv::Id pointer_id = right_id;
+					right_id = add_node(section, lookup_id(right_id).location, spv::OpLoad, convert_type(rtype));
+					lookup_id(right_id)
+						.add(pointer_id);
+				}
+
+				// Handle arithmetic assignment operator first
+				spv::Id new_node = add_node(section, lookup_id(node_id).location, op, convert_type(type));
+				lookup_id(new_node)
+					.add(left_id)
+					.add(right_id);
+
+				right_id = new_node;
 			}
 
-			auto &assignment = add_node(section, left.location, spv::OpStore, left.result_type);
-			assignment.add(left_id);
-			assignment.add(right_id);
-
-			assignment.type = lookup_id(left_id).type;
-
-			left_id = assignment.result;
+			// Write result back to variable
+			add_node_without_result(section, lookup_id(node_id).location, spv::OpStore)
+				.add(node_id)
+				.add(right_id);
 		}
 
 		return true;
@@ -2168,22 +1986,23 @@ namespace reshadefx
 
 			add_node_without_result(section, _token.location, spv::OpBranchConditional);
 
-			spv::Id condition = 0;
+			spv::Id condition_id = 0;
+			type_info condition_type;
 
-			if (!(expect('(') && parse_expression(section, condition) && expect(')')))
+			if (!(expect('(') && parse_expression(section, condition_id, condition_type) && expect(')')))
 			{
 				return false;
 			}
 
-			if (!lookup_id(condition).type.is_scalar())
+			if (!condition_type.is_scalar())
 			{
-				error(lookup_id(condition).location, 3019, "if statement conditional expressions must evaluate to a scalar");
+				error(lookup_id(condition_id).location, 3019, "if statement conditional expressions must evaluate to a scalar");
 				return false;
 			}
 
-			section.instructions[merge_index].add(condition); // Condition
+			section.instructions[merge_index].add(condition_id); // Condition
 
-			spv::Id true_label = add_node(section, _token.location, spv::OpLabel).result;
+			spv::Id true_label = add_node(section, _token.location, spv::OpLabel);
 
 			section.instructions[merge_index].add(true_label); // True Label
 
@@ -2192,7 +2011,7 @@ namespace reshadefx
 				return false;
 			}
 
-			spv::Id false_label = add_node(section, _token.location, spv::OpLabel).result;
+			spv::Id false_label = add_node(section, _token.location, spv::OpLabel);
 
 			section.instructions[merge_index].add(false_label); // False Label
 
@@ -2206,7 +2025,7 @@ namespace reshadefx
 
 			size_t final_branch_index = add_node_without_result(section, _token.location, spv::OpBranch).index;
 
-			spv::Id continue_label = add_node(section, _token.location, spv::OpLabel).result;
+			spv::Id continue_label = add_node(section, _token.location, spv::OpLabel);
 
 			section.instructions[final_branch_index].add(continue_label); // Target Label
 
@@ -2479,8 +2298,9 @@ namespace reshadefx
 			if (!peek(';'))
 			{
 				spv::Id return_value = 0;
+				type_info return_type;
 
-				if (!parse_expression(section, return_value))
+				if (!parse_expression(section, return_value, return_type))
 				{
 					return false;
 				}
@@ -2508,8 +2328,8 @@ namespace reshadefx
 				}
 #endif
 
-				auto &node = add_node_without_result(section, location, spv::OpReturnValue);
-				node.add(return_value);
+				spv_node &node = add_node_without_result(section, location, spv::OpReturnValue)
+					.add(return_value);
 			}
 #if 0
 			else if (!parent->return_type.is_void())
@@ -2542,7 +2362,7 @@ namespace reshadefx
 		#pragma region Declaration
 		const auto location = _token_next.location;
 
-		if (type_node type; parse_type(type))
+		if (type_info type; parse_type(type))
 		{
 			unsigned int count = 0;
 
@@ -2572,8 +2392,10 @@ namespace reshadefx
 		#pragma endregion
 
 		#pragma region Expression
+		spv::Id expression_id;
+		type_info expression_type;
 		
-		if (spv::Id expression_id; parse_expression(section, expression_id))
+		if (parse_expression(section, expression_id, expression_type))
 		{
 			return expect(';');
 		}
@@ -2597,7 +2419,7 @@ namespace reshadefx
 			_symbol_table->enter_scope();
 		}
 
-		label = add_node(section, _token.location, spv::OpLabel).result;
+		label = add_node(section, _token.location, spv::OpLabel);
 
 		while (!peek('}') && !peek(tokenid::end_of_file))
 		{
@@ -2644,7 +2466,7 @@ namespace reshadefx
 	// Declarations
 	bool parser::parse_top_level()
 	{
-		type_node type = { type_node::datatype_void };
+		type_info type = { spv::OpTypeVoid };
 
 		if (peek(tokenid::namespace_))
 		{
@@ -2655,41 +2477,31 @@ namespace reshadefx
 			spv::Id type_id = 0;
 
 			if (!parse_struct(type_id))
-			{
 				return false;
-			}
 
 			if (!expect(';'))
-			{
 				return false;
-			}
 		}
 		else if (peek(tokenid::technique))
 		{
 			technique_properties technique;
 
 			if (!parse_technique(technique))
-			{
 				return false;
-			}
 
 			techniques.push_back(std::move(technique));
 		}
 		else if (parse_type(type))
 		{
 			if (!expect(tokenid::identifier))
-			{
 				return false;
-			}
 
 			if (peek('('))
 			{
 				spv::Id function_id = 0;
 
 				if (!parse_function_declaration(type, _token.literal_as_string, function_id))
-				{
 					return false;
-				}
 			}
 			else
 			{
@@ -2698,25 +2510,20 @@ namespace reshadefx
 				do
 				{
 					if (count++ > 0 && !(expect(',') && expect(tokenid::identifier)))
-					{
 						return false;
-					}
 
 					spv::Id variable_id = 0;
 
 					if (!parse_variable_declaration(_variables, type, _token.literal_as_string, variable_id, true))
 					{
 						consume_until(';');
-
 						return false;
 					}
 				}
 				while (!peek(';'));
 
 				if (!expect(';'))
-				{
 					return false;
-				}
 			}
 		}
 		else if (!accept(';'))
@@ -2816,7 +2623,7 @@ namespace reshadefx
 
 		while (!peek('>'))
 		{
-			type_node type;
+			type_info type;
 
 			if (accept_type_class(type))
 			{
@@ -2830,8 +2637,9 @@ namespace reshadefx
 
 			const auto name = _token.literal_as_string;
 			spv::Id expression_id = 0;
+			type_info expression_type;
 
-			if (!(expect('=') && parse_expression_unary(_temporary, expression_id) && expect(';')))
+			if (!(expect('=') && parse_expression_unary(_temporary, expression_id, expression_type) && expect(';')))
 			{
 				return false;
 			}
@@ -2898,7 +2706,7 @@ namespace reshadefx
 
 		while (!peek('}'))
 		{
-			type_node type;
+			type_info type;
 
 			if (!parse_type(type))
 			{
@@ -2917,7 +2725,7 @@ namespace reshadefx
 
 				return false;
 			}
-			if (type.has_qualifier(type_node::qualifier_in) || type.has_qualifier(type_node::qualifier_out))
+			if (type.has(qualifier_in) || type.has(qualifier_out))
 			{
 				error(_token_next.location, 3055, "struct members cannot be declared 'in' or 'out'");
 
@@ -2984,21 +2792,17 @@ namespace reshadefx
 		{
 			warning(location, 5001, "struct has no members");
 
-			auto &structure = add_node(_variables, _token.location, spv::OpTypeOpaque);
-
-			type_id = structure.result;
+			type_id = add_node(_variables, _token.location, spv::OpTypeOpaque);
 		}
 		else
 		{
-			auto &structure = add_node(_variables, _token.location, spv::OpTypeStruct);
+			type_id = add_node(_variables, _token.location, spv::OpTypeStruct);
 
 
 			//structure.operands
-
-			type_id = structure.result;
 		}
 
-		if (!_symbol_table->insert(name, type_id, spv::OpTypeStruct, nullptr, true))
+		if (!_symbol_table->insert(name, { spv::OpTypeStruct, type_id }, true))
 		{
 			error(_token.location, 3003, "redefinition of '" + name + "'");
 
@@ -3008,7 +2812,7 @@ namespace reshadefx
 		return expect('}');
 	}
 
-	bool parser::parse_function_declaration(type_node &type, std::string name, spv::Id &function_id)
+	bool parser::parse_function_declaration(type_info &type, std::string name, spv::Id &node_id)
 	{
 		const auto location = _token.location;
 
@@ -3024,24 +2828,25 @@ namespace reshadefx
 			return false;
 		}
 
-		auto &function = add_node(_functions, location, spv::OpFunction, lookup_type(type)); // TODO
-		function.add(spv::FunctionControlInlineMask); // Function Control
-		function.add(-1); // Function Type
+		type.qualifiers = qualifier_const;
 
-		function_id = function.result;
+		node_id = add_node(_function_section, location, spv::OpFunction, convert_type(type)); // TODO
+		lookup_id(node_id)
+			.add(spv::FunctionControlInlineMask); // Function Control
 
-		function.type = type;
-		function.type.qualifiers = type_node::qualifier_const;
-		//function->name = name;
+		function_info &function = *_functions.emplace_back(new function_info());
 
-		//function->unique_name = 'F' + _symbol_table->current_scope().name + function->name;
-		//std::replace(function->unique_name.begin(), function->unique_name.end(), ':', '_');
+		function.name = name;
+		function.unique_name = 'F' + _symbol_table->current_scope().name + name;
+		std::replace(function.unique_name.begin(), function.unique_name.end(), ':', '_');
 
-		auto props = new function_properties(); // TODO LEEAAK
+		function.definition = node_id;
 
-		_symbol_table->insert(name, function_id, spv::OpTypeFunction, props, true);
+		function.return_type = type;
 
-		_symbol_table->enter_scope(function_id);
+		_symbol_table->insert(name, { spv::OpTypeFunction, node_id, {}, &function }, true);
+
+		_symbol_table->enter_scope(node_id);
 
 		unsigned int num_params = 0;
 
@@ -3054,7 +2859,7 @@ namespace reshadefx
 				return false;
 			}
 
-			type_node param_type;
+			type_info param_type;
 
 			if (!parse_type(param_type))
 			{
@@ -3073,53 +2878,49 @@ namespace reshadefx
 			}
 
 			std::string param_name = _token.literal_as_string;
-
-			props->parameter_list.push_back(param_type);
-
-			auto &param = add_node(_functions, _token.location, spv::OpFunctionParameter, lookup_type(param_type));
-
-			param.type = param_type;
-
+			auto param_location = _token.location;
 			//parameter->unique_name = parameter->name = _token.literal_as_string;
 
-			if (param.type.is_void())
+			function.parameter_list.push_back(param_type);
+
+			if (param_type.is_void())
 			{
-				error(param.location, 3038, "function parameters cannot be void");
+				error(param_location, 3038, "function parameters cannot be void");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (param.type.has_qualifier(type_node::qualifier_extern))
+			if (param_type.has(qualifier_extern))
 			{
-				error(param.location, 3006, "function parameters cannot be declared 'extern'");
+				error(param_location, 3006, "function parameters cannot be declared 'extern'");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (param.type.has_qualifier(type_node::qualifier_static))
+			if (param_type.has(qualifier_static))
 			{
-				error(param.location, 3007, "function parameters cannot be declared 'static'");
+				error(param_location, 3007, "function parameters cannot be declared 'static'");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (param.type.has_qualifier(type_node::qualifier_uniform))
+			if (param_type.has(qualifier_uniform))
 			{
-				error(param.location, 3047, "function parameters cannot be declared 'uniform', consider placing in global scope instead");
+				error(param_location, 3047, "function parameters cannot be declared 'uniform', consider placing in global scope instead");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
 
-			if (param.type.has_qualifier(type_node::qualifier_out))
+			if (param_type.has(qualifier_out))
 			{
-				if (param_type.has_qualifier(type_node::qualifier_const))
+				if (param_type.has(qualifier_const))
 				{
-					error(param.location, 3046, "output parameters cannot be declared 'const'");
+					error(param_location, 3046, "output parameters cannot be declared 'const'");
 
 					_symbol_table->leave_scope();
 
@@ -3128,17 +2929,19 @@ namespace reshadefx
 			}
 			else
 			{
-				param.type.qualifiers |= type_node::qualifier_in;
+				param_type.qualifiers |= qualifier_in;
 			}
 
-			if (!parse_array(param.type.array_length))
-			{
+			if (!parse_array(param_type.array_length))
 				return false;
-			}
 
-			if (!_symbol_table->insert(param_name, param.result, spv::OpVariable, nullptr))
+			param_type.is_pointer = true;
+
+			spv::Id param = add_node(_function_section, _token.location, spv::OpFunctionParameter, convert_type(param_type));
+
+			if (!_symbol_table->insert(param_name, { spv::OpVariable, param, param_type }))
 			{
-				error(param.location, 3003, "redefinition of '" + param_name + "'");
+				error(lookup_id(param).location, 3003, "redefinition of '" + param_name + "'");
 
 				_symbol_table->leave_scope();
 
@@ -3185,14 +2988,15 @@ namespace reshadefx
 			if (type.is_void())
 			{
 				error(_token.location, 3076, "void function cannot have a semantic");
-
 				return false;
 			}
 		}
 
+		lookup_id(node_id).add(convert_type(function)); // Function Type
+
 		spv::Id definition = 0;
 
-		if (!parse_statement_block(_functions, definition, false))
+		if (!parse_statement_block(_function_section, definition, false))
 		{
 			_symbol_table->leave_scope();
 
@@ -3201,10 +3005,18 @@ namespace reshadefx
 
 		_symbol_table->leave_scope();
 
+		// Add implicit return statement to the end of void functions
+		if (function.return_type.is_void())
+		{
+			add_node_without_result(_function_section, location, spv::OpReturn);
+		}
+
+		add_node_without_result(_function_section, location, spv::OpFunctionEnd);
+
 		return true;
 	}
 
-	bool parser::parse_variable_declaration(spv_section &section, type_node &type, std::string name, spv::Id &variable_id, bool global)
+	bool parser::parse_variable_declaration(spv_section &section, type_info &type, std::string name, spv::Id &node_id, bool global)
 	{
 		auto location = _token.location;
 
@@ -3214,7 +3026,7 @@ namespace reshadefx
 
 			return false;
 		}
-		if (type.has_qualifier(type_node::qualifier_in) || type.has_qualifier(type_node::qualifier_out))
+		if (type.has(qualifier_in) || type.has(qualifier_out))
 		{
 			error(location, 3055, "variables cannot be declared 'in' or 'out'");
 
@@ -3225,39 +3037,39 @@ namespace reshadefx
 
 		if (!parent)
 		{
-			if (!type.has_qualifier(type_node::qualifier_static))
+			if (!type.has(qualifier_static))
 			{
-				if (!type.has_qualifier(type_node::qualifier_uniform) && !(type.is_texture() || type.is_sampler()))
+				if (!type.has(qualifier_uniform) && !(type.is_image() || type.is_sampled_image()))
 				{
 					warning(location, 5000, "global variables are considered 'uniform' by default");
 				}
 
-				if (type.has_qualifier(type_node::qualifier_const))
+				if (type.has(qualifier_const))
 				{
 					error(location, 3035, "variables which are 'uniform' cannot be declared 'const'");
 
 					return false;
 				}
 
-				type.qualifiers |= type_node::qualifier_extern | type_node::qualifier_uniform;
+				type.qualifiers |= qualifier_extern | qualifier_uniform;
 			}
 		}
 		else
 		{
-			if (type.has_qualifier(type_node::qualifier_extern))
+			if (type.has(qualifier_extern))
 			{
 				error(location, 3006, "local variables cannot be declared 'extern'");
 
 				return false;
 			}
-			if (type.has_qualifier(type_node::qualifier_uniform))
+			if (type.has(qualifier_uniform))
 			{
 				error(location, 3047, "local variables cannot be declared 'uniform'");
 
 				return false;
 			}
 
-			if (type.is_texture() || type.is_sampler())
+			if (type.is_image() || type.is_sampled_image())
 			{
 				error(location, 3038, "local variables cannot be textures or samplers");
 
@@ -3297,8 +3109,9 @@ namespace reshadefx
 			return true;
 		}
 
-		variable_properties props; // TODO
+		variable_info props; // TODO
 		spv::Id initializer_id = 0;
+		type_info initializer_type;
 
 		if (global && !parse_annotations(props.annotation_list))
 		{
@@ -3309,7 +3122,7 @@ namespace reshadefx
 		{
 			location = _token.location;
 
-			if (!parse_variable_assignment(section, initializer_id))
+			if (!parse_variable_assignment(section, initializer_id, initializer_type))
 			{
 				return false;
 			}
@@ -3339,35 +3152,35 @@ namespace reshadefx
 			}
 #endif
 
-			if (!type_node::rank(lookup_id(initializer_id).type, type))
+			if (!type_info::rank(initializer_type, type))
 			{
 				error(location, 3017, "initial value does not match variable type");
 
 				return false;
 			}
-			if ((lookup_id(initializer_id).type.rows < type.rows || lookup_id(initializer_id).type.cols < type.cols) && !lookup_id(initializer_id).type.is_scalar())
+			if ((initializer_type.rows < type.rows || initializer_type.cols < type.cols) && !initializer_type.is_scalar())
 			{
 				error(location, 3017, "cannot implicitly convert these vector types");
 
 				return false;
 			}
 
-			if (lookup_id(initializer_id).type.rows > type.rows || lookup_id(initializer_id).type.cols > type.cols)
+			if (initializer_type.rows > type.rows || initializer_type.cols > type.cols)
 			{
 				warning(location, 3206, "implicit truncation of vector type");
 			}
 		}
 		else if (type.is_numeric())
 		{
-			if (type.has_qualifier(type_node::qualifier_const))
+			if (type.has(qualifier_const))
 			{
 				error(location, 3012, "missing initial value for '" + name + "'");
 
 				return false;
 			}
-			else if (!type.has_qualifier(type_node::qualifier_uniform) && !type.is_array())
+			else if (!type.has(qualifier_uniform) && !type.is_array())
 			{
-				initializer_id = literal_0_float; // TODO
+				initializer_id = convert_constant(type, 0u); // TODO
 			}
 		}
 		else if (peek('{'))
@@ -3378,33 +3191,32 @@ namespace reshadefx
 			}
 		}
 
-		if (type.is_sampler() && !props.texture)
+		if (type.is_sampled_image() && !props.texture)
 		{
 			error(location, 3012, "missing 'Texture' property for '" + name + "'");
 
 			return false;
 		}
 
-		auto &variable = add_node(_variables, location, spv::OpVariable, lookup_type(type)); // TODO
-		variable.add(storage);
+		type.is_pointer = true;
+
+		node_id = add_node(global ? _variables : section, location, spv::OpVariable, convert_type(type)); // TODO
+		lookup_id(node_id)
+			.add(storage);
 		if (initializer_id)
-			variable.add(initializer_id);
+			lookup_id(node_id).add(initializer_id);
 
-		variable_id = variable.result;
-
-		if (!_symbol_table->insert(name, variable_id, spv::OpVariable, nullptr, global))
+		if (!_symbol_table->insert(name, { spv::OpVariable, node_id, type }, global))
 		{
 			error(location, 3003, "redefinition of '" + name + "'");
 
 			return false;
 		}
 
-		variable.type = type;
-
 		return true;
 	}
 
-	bool parser::parse_variable_assignment(spv_section &section, spv::Id &expression)
+	bool parser::parse_variable_assignment(spv_section &section, spv::Id &node_id, type_info &type)
 	{
 #if 0 // TODO
 		if (accept('{'))
@@ -3450,10 +3262,10 @@ namespace reshadefx
 		}
 #endif
 
-		return parse_expression_assignment(section, expression);
+		return parse_expression_assignment(section, node_id, type);
 	}
 
-	bool parser::parse_variable_properties(variable_properties &props)
+	bool parser::parse_variable_properties(variable_info &props)
 	{
 		if (!expect('{'))
 		{
@@ -3471,8 +3283,9 @@ namespace reshadefx
 			const auto location = _token.location;
 
 			spv::Id value_id = 0;
+			type_info value_type;
 
-			if (!(expect('=') && parse_variable_properties_expression(value_id) && expect(';')))
+			if (!(expect('=') && parse_variable_properties_expression(value_id, value_type) && expect(';')))
 			{
 				return false;
 			}
@@ -3675,8 +3488,9 @@ namespace reshadefx
 			const auto location = _token.location;
 
 			spv::Id value_id = 0;
+			type_info value_type;
 
-			if (!(expect('=') && parse_technique_pass_expression(value_id) && expect(';')))
+			if (!(expect('=') && parse_technique_pass_expression(value_id, value_type) && expect(';')))
 			{
 				return false;
 			}
@@ -3690,10 +3504,32 @@ namespace reshadefx
 					return false;
 				}
 
-				if (passstate[0] != 'V')
-					pass.pixel_shader = value_id;
-				else
+				auto &node = add_node_without_result(_entries, {}, spv::OpEntryPoint);
+
+				if (passstate[0] == 'V')
+				{
+					node.add(spv::ExecutionModelVertex);
 					pass.vertex_shader = value_id;
+				}
+				else
+				{
+					node.add(spv::ExecutionModelFragment);
+					pass.pixel_shader = value_id;
+				}
+
+				std::string name = "main";
+
+				for (auto &f : _functions)
+				{
+					if (f->definition == value_id)
+					{
+						name = f->name;
+						break;
+					}
+				}
+
+				node.add(value_id);
+				node.add_string(name.c_str());
 			}
 			else if (passstate.compare(0, 12, "RenderTarget") == 0 && (passstate == "RenderTarget" || (passstate[12] >= '0' && passstate[12] < '8')))
 			{
@@ -3817,7 +3653,7 @@ namespace reshadefx
 		return expect('}');
 	}
 
-	bool parser::parse_variable_properties_expression(spv::Id &expression)
+	bool parser::parse_variable_properties_expression(spv::Id &node_id, type_info &type)
 	{
 		backup();
 
@@ -3866,13 +3702,11 @@ namespace reshadefx
 			{
 				if (value.first == _token.literal_as_string)
 				{
-					auto &newexpression = add_node(_temporary, location, spv::OpConstant, type_uint);
-					newexpression.add(value.second);
+					type = { spv::OpTypeInt, 32, 1, 1, false };
 
-					newexpression.type.basetype = type_node::datatype_uint;
-					newexpression.type.rows = newexpression.type.cols = 1, newexpression.type.array_length = 0;
-
-					expression = newexpression.result;
+					node_id = add_node(_temporary, location, spv::OpConstant, convert_type(type));
+					lookup_id(node_id)
+						.add(value.second);
 
 					return true;
 				}
@@ -3881,9 +3715,9 @@ namespace reshadefx
 			restore();
 		}
 
-		return parse_expression_multary(_temporary, expression);
+		return parse_expression_multary(_temporary, node_id, type);
 	}
-	bool parser::parse_technique_pass_expression(spv::Id &expression)
+	bool parser::parse_technique_pass_expression(spv::Id &node_id, type_info &type)
 	{
 		scope scope;
 		bool exclusive;
@@ -3946,13 +3780,11 @@ namespace reshadefx
 			{
 				if (value.first == _token.literal_as_string)
 				{
-					auto &newexpression = add_node(_temporary, location, spv::OpConstant, type_uint);
-					newexpression.add(value.second);
+					type = { spv::OpTypeInt, 32, 1, 1, false };
 
-					newexpression.type.basetype = type_node::datatype_uint;
-					newexpression.type.rows = newexpression.type.cols = 1, newexpression.type.array_length = 0;
-
-					expression = newexpression.result;
+					node_id = add_node(_temporary, location, spv::OpConstant, convert_type(type));
+					lookup_id(node_id)
+						.add(value.second);
 
 					return true;
 				}
@@ -3965,18 +3797,19 @@ namespace reshadefx
 
 			const auto symbol = _symbol_table->find(identifier, scope, exclusive);
 
-			if (!symbol)
+			if (!symbol.id)
 			{
 				error(location, 3004, "undeclared identifier '" + identifier + "'");
 
 				return false;
 			}
 
-			expression = symbol;
+			type = symbol.type;
+			node_id = symbol.id;
 
 			return true;
 		}
 
-		return parse_expression_multary(_temporary, expression);
+		return parse_expression_multary(_temporary, node_id, type);
 	}
 }
