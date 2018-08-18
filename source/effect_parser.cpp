@@ -6,17 +6,41 @@
 #include "effect_parser.hpp"
 #include "effect_symbol_table.hpp"
 #include <algorithm>
+#include <fstream>
 
 namespace reshadefx
 {
-	using namespace nodes;
+	//void scalar_literal_cast(const literal_expression_node *from, size_t i, int &to);
+	//void scalar_literal_cast(const literal_expression_node *from, size_t i, unsigned int &to);
+	//void scalar_literal_cast(const literal_expression_node *from, size_t i, float &to);
+	//void vector_literal_cast(const literal_expression_node *from, size_t k, literal_expression_node *to, size_t j);
 
-	void scalar_literal_cast(const nodes::literal_expression_node *from, size_t i, int &to);
-	void scalar_literal_cast(const nodes::literal_expression_node *from, size_t i, unsigned int &to);
-	void scalar_literal_cast(const nodes::literal_expression_node *from, size_t i, float &to);
-	void vector_literal_cast(const nodes::literal_expression_node *from, size_t k, nodes::literal_expression_node *to, size_t j);
+	spv::Id fold_constant_expression(spv::Id expression) {
+		return expression;
+	}
 
-	nodes::expression_node *fold_constant_expression(syntax_tree &ast, nodes::expression_node *expression);
+	inline void write(std::ofstream &s, uint32_t word)
+	{
+		s.write((char *)&word, 4);;
+	}
+	inline void write(std::ofstream &s, const spv_node &ins)
+	{
+		// First word of an instruction:
+		// The 16 low-order bits are the opcode enumerant
+		// The 16 high-order bits are the word count of the instruction
+		const uint32_t num_words = 1 + (ins.result_type != 0) + (ins.result != 0) + ins.operands.size();
+		write(s, (num_words << 16) | ins.op);
+
+		// Optional instruction type ID
+		if (ins.result_type != 0) write(s, ins.result_type);
+
+		// Optional instruction result ID
+		if (ins.result != 0) write(s, ins.result);
+
+		// Write out the operands
+		for (size_t i = 0; i < ins.operands.size(); ++i)
+			write(s, ins.operands[i]);
+	}
 
 	const std::string get_token_name(tokenid id)
 	{
@@ -250,8 +274,7 @@ namespace reshadefx
 		}
 	}
 
-	parser::parser(syntax_tree &ast) :
-		_ast(ast),
+	parser::parser() :
 		_symbol_table(new symbol_table())
 	{
 	}
@@ -272,6 +295,155 @@ namespace reshadefx
 			{
 				return false;
 			}
+		}
+
+		std::ofstream s("test.spv", std::ios::binary | std::ios::out);
+		// Write SPIRV header info
+		write(s, spv::MagicNumber);
+		write(s, spv::Version);
+		write(s, 0u); // Generator magic number, see https://www.khronos.org/registry/spir-v/api/spir-v.xml
+		write(s, 1000u); // Maximum ID
+		write(s, 0u); // Reserved for instruction schema
+
+		// All capabilities
+		
+		write(s, spv_node(spv::OpCapability)
+			.add(spv::CapabilityShader));
+
+		// Optional extension instructions
+		const uint32_t glsl_ext = 1;
+
+		write(s, spv_node(spv::OpExtInstImport, glsl_ext)
+			.add_string("GLSL.std.450")); // Import GLSL extension
+
+		// Single required memory model instruction
+		write(s, spv_node(spv::OpMemoryModel)
+			.add(spv::AddressingModelLogical)
+			.add(spv::MemoryModelGLSL450));
+
+		// All entry point declarations
+		//_out_stream << spv_node(spv::OpEntryPoint, spv::ExecutionModelVertex, 0 /* function id */,
+
+		// All execution mode declarations
+		//_out_stream << spv_node(spv::OpExecutionMode, 0 /* function id */,
+
+		// All debug instructions
+		const char *filename = "test.fx";
+		const uint32_t filename_id = 2;
+
+		write(s, spv_node(spv::OpString, filename_id)
+			.add_string(filename));
+		write(s, spv_node(spv::OpSource)
+			.add(spv::SourceLanguageUnknown)
+			.add(0) // Version
+			.add(filename_id)); // Filename string ID
+
+		// All annotation instructions
+
+		// All type declarations
+		write(s, spv_node(spv::OpTypeVoid, type_void));
+		write(s, spv_node(spv::OpTypeBool, type_bool));
+		write(s, spv_node(spv::OpTypeVector, type_bool2)
+			.add(type_bool)
+			.add(2));
+		write(s, spv_node(spv::OpTypeVector, type_bool3)
+			.add(type_bool)
+			.add(3));
+		write(s, spv_node(spv::OpTypeVector, type_bool4)
+			.add(type_bool)
+			.add(4));
+		write(s, spv_node(spv::OpTypeMatrix, type_bool2x2)
+			.add(type_bool2)
+			.add(2));
+		write(s, spv_node(spv::OpTypeMatrix, type_bool3x3)
+			.add(type_bool3)
+			.add(3));
+		write(s, spv_node(spv::OpTypeMatrix, type_bool4x4)
+			.add(type_bool4)
+			.add(4));
+		write(s, spv_node(spv::OpTypeInt, type_int)
+			.add(32) // Width: Specifies how many bits wide the type 
+			.add(1)); // Signedness: 1 indicates signed semantics
+		write(s, spv_node(spv::OpTypeVector, type_int2)
+			.add(type_int)
+			.add(2));
+		write(s, spv_node(spv::OpTypeVector, type_int3)
+			.add(type_int)
+			.add(3));
+		write(s, spv_node(spv::OpTypeVector, type_int4)
+			.add(type_int)
+			.add(4));
+		write(s, spv_node(spv::OpTypeMatrix, type_int2x2)
+			.add(type_int2)
+			.add(2));
+		write(s, spv_node(spv::OpTypeMatrix, type_int3x3)
+			.add(type_int3)
+			.add(3));
+		write(s, spv_node(spv::OpTypeMatrix, type_int4x4)
+			.add(type_int4)
+			.add(4));
+		write(s, spv_node(spv::OpTypeInt, type_uint)
+			.add(32) // Width: Specifies how many bits wide the type 
+			.add(0)); // Signedness: 0 indicates unsigned or no signedness semantics
+		write(s, spv_node(spv::OpTypeVector, type_uint2)
+			.add(type_uint)
+			.add(2));
+		write(s, spv_node(spv::OpTypeVector, type_uint3)
+			.add(type_uint)
+			.add(3));
+		write(s, spv_node(spv::OpTypeVector, type_uint4)
+			.add(type_uint)
+			.add(4));
+		write(s, spv_node(spv::OpTypeMatrix, type_uint2x2)
+			.add(type_uint2)
+			.add(2));
+		write(s, spv_node(spv::OpTypeMatrix, type_uint3x3)
+			.add(type_uint3)
+			.add(3));
+		write(s, spv_node(spv::OpTypeMatrix, type_uint4x4)
+			.add(type_uint4)
+			.add(4));
+		write(s, spv_node(spv::OpTypeFloat, type_float)
+			.add(32)); // Width: Specifies how many bits wide the type is (as described by the IEEE 754 standard)
+		write(s, spv_node(spv::OpTypeVector, type_float2)
+			.add(type_float)
+			.add(2));
+		write(s, spv_node(spv::OpTypeVector, type_float3)
+			.add(type_float)
+			.add(3));
+		write(s, spv_node(spv::OpTypeVector, type_float4)
+			.add(type_float)
+			.add(4));
+		write(s, spv_node(spv::OpTypeMatrix, type_float2x2)
+			.add(type_float2)
+			.add(2));
+		write(s, spv_node(spv::OpTypeMatrix, type_float3x3)
+			.add(type_float3)
+			.add(3));
+		write(s, spv_node(spv::OpTypeMatrix, type_float4x4)
+			.add(type_float4)
+			.add(4));
+		write(s, spv_node(spv::OpTypeImage, type_texture)
+			.add(type_float) // Sampled type: Type of the components that result from sampling
+			.add(spv::Dim2D) // Image dimension
+			.add(0) // Depth: 0 indicates not a depth image
+			.add(0) // Arrayed: 0 indicates non-arrayed content
+			.add(0) // MS: 0 indicates single-sampled content
+			.add(1) // Sampled: 1 indicates will be used with sampler
+			.add(spv::ImageFormatUnknown)); // Image format
+		write(s, spv_node(spv::OpTypeSampledImage, type_sampled_texture)
+			.add(type_texture));
+
+		for (const auto &node : _variables.instructions)
+		{
+			write(s, node);
+		}
+
+		// All function definitions
+
+		for (const auto &node : _functions.instructions)
+		{
+			write(s, node);
 		}
 
 		return true;
@@ -364,7 +536,7 @@ namespace reshadefx
 	// Types
 	bool parser::accept_type_class(type_node &type)
 	{
-		type.definition = nullptr;
+		type.definition = 0;
 		type.array_length = 0;
 
 		if (peek(tokenid::identifier))
@@ -374,9 +546,9 @@ namespace reshadefx
 
 			const auto symbol = _symbol_table->find(_token_next.literal_as_string);
 
-			if (symbol != nullptr && symbol->id == nodeid::struct_declaration)
+			if (symbol && lookup_id(symbol).op == spv::OpTypeStruct)
 			{
-				type.definition = static_cast<struct_declaration_node *>(symbol);
+				type.definition = symbol;
 
 				consume();
 			}
@@ -727,261 +899,248 @@ namespace reshadefx
 	}
 
 	// Expressions
-	bool parser::accept_unary_op(enum unary_expression_node::op &op)
+	bool parser::accept_unary_op(spv::Op &op)
 	{
 		switch (_token_next.id)
 		{
-			case tokenid::exclaim:
-				op = unary_expression_node::logical_not;
-				break;
-			case tokenid::plus:
-				op = unary_expression_node::none;
-				break;
-			case tokenid::minus:
-				op = unary_expression_node::negate;
-				break;
-			case tokenid::tilde:
-				op = unary_expression_node::bitwise_not;
-				break;
-			case tokenid::plus_plus:
-				op = unary_expression_node::pre_increase;
-				break;
-			case tokenid::minus_minus:
-				op = unary_expression_node::pre_decrease;
-				break;
-			default:
-				return false;
-		}
-
-		consume();
-
-		return true;
-	}
-	bool parser::accept_postfix_op(enum unary_expression_node::op &op)
-	{
-		switch (_token_next.id)
-		{
-			case tokenid::plus_plus:
-				op = unary_expression_node::post_increase;
-				break;
-			case tokenid::minus_minus:
-				op = unary_expression_node::post_decrease;
-				break;
-			default:
-				return false;
-		}
-
-		consume();
-
-		return true;
-	}
-	bool parser::peek_multary_op(enum binary_expression_node::op &op, unsigned int &precedence) const
-	{
-		switch (_token_next.id)
-		{
-			case tokenid::percent:
-				op = binary_expression_node::modulo;
-				precedence = 11;
-				break;
-			case tokenid::ampersand:
-				op = binary_expression_node::bitwise_and;
-				precedence = 6;
-				break;
-			case tokenid::star:
-				op = binary_expression_node::multiply;
-				precedence = 11;
-				break;
-			case tokenid::plus:
-				op = binary_expression_node::add;
-				precedence = 10;
-				break;
-			case tokenid::minus:
-				op = binary_expression_node::subtract;
-				precedence = 10;
-				break;
-			case tokenid::slash:
-				op = binary_expression_node::divide;
-				precedence = 11;
-				break;
-			case tokenid::less:
-				op = binary_expression_node::less;
-				precedence = 8;
-				break;
-			case tokenid::greater:
-				op = binary_expression_node::greater;
-				precedence = 8;
-				break;
-			case tokenid::question:
-				op = binary_expression_node::none;
-				precedence = 1;
-				break;
-			case tokenid::caret:
-				op = binary_expression_node::bitwise_xor;
-				precedence = 5;
-				break;
-			case tokenid::pipe:
-				op = binary_expression_node::bitwise_or;
-				precedence = 4;
-				break;
-			case tokenid::exclaim_equal:
-				op = binary_expression_node::not_equal;
-				precedence = 7;
-				break;
-			case tokenid::ampersand_ampersand:
-				op = binary_expression_node::logical_and;
-				precedence = 3;
-				break;
-			case tokenid::less_less:
-				op = binary_expression_node::left_shift;
-				precedence = 9;
-				break;
-			case tokenid::less_equal:
-				op = binary_expression_node::less_equal;
-				precedence = 8;
-				break;
-			case tokenid::equal_equal:
-				op = binary_expression_node::equal;
-				precedence = 7;
-				break;
-			case tokenid::greater_greater:
-				op = binary_expression_node::right_shift;
-				precedence = 9;
-				break;
-			case tokenid::greater_equal:
-				op = binary_expression_node::greater_equal;
-				precedence = 8;
-				break;
-			case tokenid::pipe_pipe:
-				op = binary_expression_node::logical_or;
-				precedence = 2;
-				break;
-			default:
-				return false;
-		}
-
-		return true;
-	}
-	bool parser::accept_assignment_op(enum assignment_expression_node::op &op)
-	{
-		switch (_token_next.id)
-		{
-			case tokenid::equal:
-				op = assignment_expression_node::none;
-				break;
-			case tokenid::percent_equal:
-				op = assignment_expression_node::modulo;
-				break;
-			case tokenid::ampersand_equal:
-				op = assignment_expression_node::bitwise_and;
-				break;
-			case tokenid::star_equal:
-				op = assignment_expression_node::multiply;
-				break;
-			case tokenid::plus_equal:
-				op = assignment_expression_node::add;
-				break;
-			case tokenid::minus_equal:
-				op = assignment_expression_node::subtract;
-				break;
-			case tokenid::slash_equal:
-				op = assignment_expression_node::divide;
-				break;
-			case tokenid::less_less_equal:
-				op = assignment_expression_node::left_shift;
-				break;
-			case tokenid::greater_greater_equal:
-				op = assignment_expression_node::right_shift;
-				break;
-			case tokenid::caret_equal:
-				op = assignment_expression_node::bitwise_xor;
-				break;
-			case tokenid::pipe_equal:
-				op = assignment_expression_node::bitwise_or;
-				break;
-			default:
-				return false;
-		}
-
-		consume();
-
-		return true;
-	}
-	bool parser::parse_expression(expression_node *&node)
-	{
-		if (!parse_expression_assignment(node))
-		{
+		case tokenid::exclaim:
+			op = spv::OpLogicalNot;
+			break;
+		case tokenid::plus:
+			op = spv::OpNop;
+			break;
+		case tokenid::minus:
+			op = spv::OpFNegate;
+			break;
+		case tokenid::tilde:
+			op = spv::OpNot;
+			break;
+		case tokenid::plus_plus:
+			op = spv::OpFAdd;
+			break;
+		case tokenid::minus_minus:
+			op = spv::OpFSub;
+			break;
+		default:
 			return false;
 		}
 
-		if (peek(','))
+		consume();
+
+		return true;
+	}
+	bool parser::accept_postfix_op(spv::Op &op)
+	{
+		switch (_token_next.id)
 		{
-			const auto sequence = _ast.make_node<expression_sequence_node>(node->location);
-			sequence->expression_list.push_back(node);
+		case tokenid::plus_plus:
+			op = spv::OpFAdd;
+			break;
+		case tokenid::minus_minus:
+			op = spv::OpFSub;
+			break;
+		default:
+			return false;
+		}
 
-			while (accept(','))
-			{
-				expression_node *expression = nullptr;
+		consume();
 
-				if (!parse_expression_assignment(expression))
-				{
-					return false;
-				}
-
-				sequence->expression_list.push_back(std::move(expression));
-			}
-
-			sequence->type = sequence->expression_list.back()->type;
-
-			node = sequence;
+		return true;
+	}
+	bool parser::peek_multary_op(spv::Op &op, unsigned int &precedence) const
+	{
+		switch (_token_next.id)
+		{
+		case tokenid::percent:
+			op = spv::OpFMod;
+			precedence = 11;
+			break;
+		case tokenid::ampersand:
+			op = spv::OpBitwiseAnd;
+			precedence = 6;
+			break;
+		case tokenid::star:
+			op = spv::OpFMul;
+			precedence = 11;
+			break;
+		case tokenid::plus:
+			op = spv::OpFAdd;
+			precedence = 10;
+			break;
+		case tokenid::minus:
+			op = spv::OpFSub;
+			precedence = 10;
+			break;
+		case tokenid::slash:
+			op = spv::OpFDiv;
+			precedence = 11;
+			break;
+		case tokenid::less:
+			op = spv::OpFOrdLessThan;
+			precedence = 8;
+			break;
+		case tokenid::greater:
+			op = spv::OpFOrdGreaterThan;
+			precedence = 8;
+			break;
+		case tokenid::question:
+			op = spv::OpSelect;
+			precedence = 1;
+			break;
+		case tokenid::caret:
+			op = spv::OpBitwiseXor;
+			precedence = 5;
+			break;
+		case tokenid::pipe:
+			op = spv::OpBitwiseOr;
+			precedence = 4;
+			break;
+		case tokenid::exclaim_equal:
+			op = spv::OpLogicalNotEqual;
+			precedence = 7;
+			break;
+		case tokenid::ampersand_ampersand:
+			op = spv::OpLogicalAnd;
+			precedence = 3;
+			break;
+		case tokenid::less_less:
+			op = spv::OpShiftLeftLogical;
+			precedence = 9;
+			break;
+		case tokenid::less_equal:
+			op = spv::OpFOrdLessThanEqual;
+			precedence = 8;
+			break;
+		case tokenid::equal_equal:
+			op = spv::OpLogicalEqual;
+			precedence = 7;
+			break;
+		case tokenid::greater_greater:
+			op = spv::OpShiftRightLogical;
+			precedence = 9;
+			break;
+		case tokenid::greater_equal:
+			op = spv::OpFOrdGreaterThanEqual;
+			precedence = 8;
+			break;
+		case tokenid::pipe_pipe:
+			op = spv::OpLogicalOr;
+			precedence = 2;
+			break;
+		default:
+			return false;
 		}
 
 		return true;
 	}
-	bool parser::parse_expression_unary(expression_node *&node)
+	bool parser::accept_assignment_op(spv::Op &op)
+	{
+		switch (_token_next.id)
+		{
+		case tokenid::equal:
+			op = spv::OpNop;
+			break;
+		case tokenid::percent_equal:
+			op = spv::OpFMod;
+			break;
+		case tokenid::ampersand_equal:
+			op = spv::OpBitwiseAnd;
+			break;
+		case tokenid::star_equal:
+			op = spv::OpFMul;
+			break;
+		case tokenid::plus_equal:
+			op = spv::OpFAdd;
+			break;
+		case tokenid::minus_equal:
+			op = spv::OpFSub;
+			break;
+		case tokenid::slash_equal:
+			op = spv::OpFDiv;
+			break;
+		case tokenid::less_less_equal:
+			op = spv::OpShiftLeftLogical;
+			break;
+		case tokenid::greater_greater_equal:
+			op = spv::OpShiftRightLogical;
+			break;
+		case tokenid::caret_equal:
+			op = spv::OpBitwiseXor;
+			break;
+		case tokenid::pipe_equal:
+			op = spv::OpBitwiseOr;
+			break;
+		default:
+			return false;
+		}
+
+		consume();
+
+		return true;
+	}
+
+	bool parser::parse_expression(spv_section &section, spv::Id &node_id)
+	{
+		if (!parse_expression_assignment(section, node_id))
+			return false;
+
+		// Continue parsing if an expression sequence is next
+		// The last expression is the result, so keep on passing in 'node_id'
+		while (accept(','))
+			if (!parse_expression_assignment(section, node_id))
+				return false;
+
+		return true;
+	}
+	bool parser::parse_expression_unary(spv_section &section, spv::Id &node_id)
 	{
 		type_node type;
-		enum unary_expression_node::op op;
+		spv::Op op;
 		auto location = _token_next.location;
 
 		#pragma region Prefix
 		if (accept_unary_op(op))
 		{
-			if (!parse_expression_unary(node))
+			if (!parse_expression_unary(section, node_id))
 			{
 				return false;
 			}
 
-			if (!node->type.is_scalar() && !node->type.is_vector() && !node->type.is_matrix())
-			{
-				error(node->location, 3022, "scalar, vector, or matrix expected");
+			const auto &node = lookup_id(node_id);
 
+			if (!node.type.is_scalar() && !node.type.is_vector() && !node.type.is_matrix())
+			{
+				error(node.location, 3022, "scalar, vector, or matrix expected");
 				return false;
 			}
 
-			if (op != unary_expression_node::none)
+			if (op != spv::OpNop)
 			{
-				if (op == unary_expression_node::bitwise_not && !node->type.is_integral())
+				spv::Id right = 0;
+
+				if (op == spv::OpNot && !node.type.is_integral())
 				{
-					error(node->location, 3082, "int or unsigned int type required");
+					error(node.location, 3082, "int or unsigned int type required");
 
 					return false;
 				}
-				else if ((op == unary_expression_node::pre_increase || op == unary_expression_node::pre_decrease) && (node->type.has_qualifier(type_node::qualifier_const) || node->type.has_qualifier(type_node::qualifier_uniform)))
+				else if ((op == spv::OpFAdd || op == spv::OpFSub) && (node.type.has_qualifier(type_node::qualifier_const) || node.type.has_qualifier(type_node::qualifier_uniform)))
 				{
-					error(node->location, 3025, "l-value specifies const object");
-
+					right = literal_1_float; // TODO
+					error(node.location, 3025, "l-value specifies const object");
 					return false;
 				}
 
-				const auto newexpression = _ast.make_node<unary_expression_node>(location);
-				newexpression->type = node->type;
-				newexpression->op = op;
-				newexpression->operand = node;
+				auto &newexpression = add_node(section, location, op, node.result_type);
+				newexpression.add(node_id);
+				newexpression.add(right);
 
-				node = fold_constant_expression(_ast, newexpression);
+				newexpression.type = lookup_id(node_id).type;
+
+				node_id = fold_constant_expression(newexpression.result);
 			}
 
-			type = node->type;
+			type = lookup_id(node_id).type;
 		}
 		else if (accept('('))
 		{
@@ -995,38 +1154,43 @@ namespace reshadefx
 				}
 				else if (expect(')'))
 				{
-					if (!parse_expression_unary(node))
+					if (!parse_expression_unary(section, node_id))
 					{
 						return false;
 					}
 
-					if (node->type.basetype == type.basetype && (node->type.rows == type.rows && node->type.cols == type.cols) && !(node->type.is_array() || type.is_array()))
+					const auto &node = lookup_id(node_id);
+
+					if (node.type.basetype == type.basetype && (node.type.rows == type.rows && node.type.cols == type.cols) && !(node.type.is_array() || type.is_array()))
 					{
 						return true;
 					}
-					else if (node->type.is_numeric() && type.is_numeric())
+					else if (node.type.is_numeric() && type.is_numeric())
 					{
-						if ((node->type.rows < type.rows || node->type.cols < type.cols) && !node->type.is_scalar())
+						if ((node.type.rows < type.rows || node.type.cols < type.cols) && !node.type.is_scalar())
 						{
 							error(location, 3017, "cannot convert these vector types");
-
 							return false;
 						}
 
-						if (node->type.rows > type.rows || node->type.cols > type.cols)
+						if (node.type.rows > type.rows || node.type.cols > type.cols)
 						{
 							warning(location, 3206, "implicit truncation of vector type");
 						}
 
-						const auto castexpression = _ast.make_node<unary_expression_node>(location);
-						type.qualifiers = type_node::qualifier_const;
-						castexpression->type = type;
-						castexpression->op = unary_expression_node::cast;
-						castexpression->operand = node;
+						//auto &castexpression = _ast.make_node<unary_expression_node>(location);
+						//type.qualifiers = type_node::qualifier_const;
+						//castexpression->type = type;
+						//castexpression->op = unary_expression_node::cast;
+						//castexpression->operand = node;
 
-						node = fold_constant_expression(_ast, castexpression);
+						//node = fold_constant_expression(_ast, castexpression.result);
 
-						return true;
+						//return true;
+						// TODO
+						error(location, 0, "CAST NOT IMPLEMENTED");
+
+						return false;
 					}
 					else
 					{
@@ -1041,99 +1205,96 @@ namespace reshadefx
 				}
 			}
 
-			if (!parse_expression(node))
-			{
+			if (!parse_expression(section, node_id))
 				return false;
-			}
 
 			if (!expect(')'))
-			{
 				return false;
-			}
 
-			type = node->type;
+			type = lookup_id(node_id).type;
 		}
 		else if (accept(tokenid::true_literal))
 		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_bool;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_int[0] = 1;
+			auto &literal = add_node(_variables, location, spv::OpConstantTrue, type_bool);
 
-			node = literal;
-			type = literal->type;
+			literal.type.basetype = type_node::datatype_bool;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
+
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept(tokenid::false_literal))
 		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_bool;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_int[0] = 0;
+			auto &literal = add_node(_variables, location, spv::OpConstantFalse, type_bool);
 
-			node = literal;
-			type = literal->type;
+			literal.type.basetype = type_node::datatype_bool;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
+
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept(tokenid::int_literal))
 		{
-			literal_expression_node *const literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_int;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_int[0] = _token.literal_as_int;
+			auto &literal = add_node(_variables, location, spv::OpConstant, type_int);
+			literal.add(_token.literal_as_int);
 
-			node = literal;
-			type = literal->type;
+			literal.type.basetype = type_node::datatype_int;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
+
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept(tokenid::uint_literal))
 		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_uint;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_uint[0] = _token.literal_as_uint;
+			auto &literal = add_node(_variables, location, spv::OpConstant, type_uint);
+			literal.add(_token.literal_as_uint);
 
-			node = literal;
-			type = literal->type;
+			literal.type.basetype = type_node::datatype_uint;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
+
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept(tokenid::float_literal))
 		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_float;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_float[0] = _token.literal_as_float;
+			auto &literal = add_node(_variables, location, spv::OpConstant, type_float);
+			literal.add(_token.literal_as_uint); // Interpret float bit pattern as int
 
-			node = literal;
-			type = literal->type;
-		}
-		else if (accept(tokenid::double_literal))
-		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_float;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 1, literal->type.array_length = 0;
-			literal->value_float[0] = static_cast<float>(_token.literal_as_double);
+			literal.type.basetype = type_node::datatype_float;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 1, literal.type.array_length = 0;
 
-			node = literal;
-			type = literal->type;
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept(tokenid::string_literal))
 		{
-			const auto literal = _ast.make_node<literal_expression_node>(location);
-			literal->type.basetype = type_node::datatype_string;
-			literal->type.qualifiers = type_node::qualifier_const;
-			literal->type.rows = literal->type.cols = 0, literal->type.array_length = 0;
-			literal->value_string = _token.literal_as_string;
+			std::string value = _token.literal_as_string;
 
 			while (accept(tokenid::string_literal))
 			{
-				literal->value_string += _token.literal_as_string;
+				value += _token.literal_as_string;
 			}
 
-			node = literal;
-			type = literal->type;
+			if (value.size() / 4 >= 5)
+			{
+				error(location, 0, "STRING TOO BIG");
+				return false;
+			}
+
+			auto &literal = add_node(_strings, location, spv::OpString);
+			literal.add_string(value.c_str());
+
+			literal.type.basetype = type_node::datatype_string;
+			literal.type.qualifiers = type_node::qualifier_const;
+			literal.type.rows = literal.type.cols = 0, literal.type.array_length = 0;
+
+			node_id = literal.result;
+			type = literal.type;
 		}
 		else if (accept_type_class(type))
 		{
@@ -1156,36 +1317,40 @@ namespace reshadefx
 				return false;
 			}
 
-			const auto constructor = _ast.make_node<constructor_expression_node>(location);
-			constructor->type = type;
-			constructor->type.qualifiers = type_node::qualifier_const;
+			auto &constructor = add_node(section, location, spv::OpCompositeConstruct, 0xFF); // TODO
+			error(location, 0, "NOT IMPLEMENTED");
+			return false;
+#if 0
+			constructor.type = type;
+			constructor.type.qualifiers = type_node::qualifier_const;
 
-			unsigned int elements = 0;
+			unsigned int num_elements = 0;
+			unsigned int num_arguments = 0;
 
 			while (!peek(')'))
 			{
-				if (!constructor->arguments.empty() && !expect(','))
+				if (num_arguments != 0 && !expect(','))
 				{
 					return false;
 				}
 
-				expression_node *argument = nullptr;
+				spv::Id argument = 0;
 
 				if (!parse_expression_assignment(argument))
 				{
 					return false;
 				}
 
-				if (!argument->type.is_numeric())
+				if (!lookup_id(argument).type.is_numeric())
 				{
-					error(argument->location, 3017, "cannot convert non-numeric types");
+					error(lookup_id(argument).location, 3017, "cannot convert non-numeric types");
 
 					return false;
 				}
 
-				elements += argument->type.rows * argument->type.cols;
+				num_elements += lookup_id(argument).type.rows * lookup_id(argument).type.cols;
 
-				constructor->arguments.push_back(std::move(argument));
+				constructor.operands[num_arguments++] = argument;
 			}
 
 			if (!expect(')'))
@@ -1193,29 +1358,36 @@ namespace reshadefx
 				return false;
 			}
 
-			if (elements != type.rows * type.cols)
+			if (num_elements != type.rows * type.cols)
 			{
 				error(location, 3014, "incorrect number of arguments to numeric-type constructor");
 
 				return false;
 			}
 
-			if (constructor->arguments.size() > 1)
+			if (num_arguments > 1)
 			{
-				node = constructor;
-				type = constructor->type;
+				node_id = constructor.result;
+				type = constructor.type;
 			}
 			else
 			{
-				const auto castexpression = _ast.make_node<unary_expression_node>(constructor->location);
-				castexpression->type = type;
-				castexpression->op = unary_expression_node::cast;
-				castexpression->operand = constructor->arguments[0];
+				// TODO
+				// OpConvertFToU OpConvertFToS OpConvertSToF OpConvertUToF OpUConvert OpSConvert OpFConvert
 
-				node = castexpression;
+				//const auto castexpression = _ast.make_node<unary_expression_node>(constructor->location);
+				//castexpression->type = type;
+				//castexpression->op = unary_expression_node::cast;
+				//castexpression->operand = constructor->arguments[0];
+
+				//node = castexpression;
+
+				error(location, 0, "CAST NOT IMPLEMENTED");
+				return false;
 			}
 
-			node = fold_constant_expression(_ast, node);
+			node_id = fold_constant_expression(_ast, node_id);
+#endif
 		}
 		else
 		{
@@ -1254,35 +1426,36 @@ namespace reshadefx
 				identifier += "::" + _token.literal_as_string;
 			}
 
-			const auto symbol = _symbol_table->find(identifier, scope, exclusive);
+			symbol symbol = _symbol_table->find(identifier, scope, exclusive);
 
 			if (accept('('))
 			{
-				if (symbol != nullptr && symbol->id == nodeid::variable_declaration)
+				if (symbol && lookup_id(symbol).op != spv::OpFunction)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a variable, not a function");
 
 					return false;
 				}
 
-				const auto callexpression = _ast.make_node<call_expression_node>(location);
-				callexpression->callee_name = identifier;
+				std::vector<spv::Id> arguments;
+				std::vector<type_node> argument_types;
 
 				while (!peek(')'))
 				{
-					if (!callexpression->arguments.empty() && !expect(','))
+					if (!arguments.empty() && !expect(','))
 					{
 						return false;
 					}
 
-					expression_node *argument = nullptr;
+					spv::Id argument = 0;
 
-					if (!parse_expression_assignment(argument))
+					if (!parse_expression_assignment(section, argument))
 					{
 						return false;
 					}
 
-					callexpression->arguments.push_back(std::move(argument));
+					arguments.push_back(std::move(argument));
+					argument_types.push_back(lookup_id(argument).type);
 				}
 
 				if (!expect(')'))
@@ -1290,11 +1463,12 @@ namespace reshadefx
 					return false;
 				}
 
-				bool undeclared = symbol == nullptr, intrinsic = false, ambiguous = false;
+				spv::Id return_type = 0;
+				bool undeclared = !!symbol, ambiguous = false;
 
-				if (!_symbol_table->resolve_call(callexpression, scope, intrinsic, ambiguous))
+				if (!_symbol_table->resolve_call(identifier, argument_types, scope, ambiguous, op, symbol, return_type))
 				{
-					if (undeclared && !intrinsic)
+					if (undeclared && op == spv::OpFunctionCall)
 					{
 						error(location, 3004, "undeclared identifier '" + identifier + "'");
 					}
@@ -1310,68 +1484,84 @@ namespace reshadefx
 					return false;
 				}
 
-				if (intrinsic)
+				if (op != spv::OpFunctionCall)
 				{
-					const auto newexpression = _ast.make_node<intrinsic_expression_node>(callexpression->location);
-					newexpression->type = callexpression->type;
-					newexpression->op = static_cast<enum intrinsic_expression_node::op>(callexpression->callee_name[0]);
+					auto &newexpression = add_node(section, location, op, return_type);
 
-					for (size_t i = 0, count = std::min(callexpression->arguments.size(), _countof(newexpression->arguments)); i < count; ++i)
+					if (op == spv::OpExtInst)
 					{
-						newexpression->arguments[i] = callexpression->arguments[i];
+						newexpression.add(1); // GLSL extended instruction set
+						newexpression.add(symbol);
 					}
 
-					node = fold_constant_expression(_ast, newexpression);
+					for (size_t i = 0; i < arguments.size(); ++i)
+					{
+						newexpression.add(arguments[i]);
+					}
+
+					node_id = fold_constant_expression(newexpression.result);
 				}
 				else
 				{
 					const auto parent = _symbol_table->current_parent();
 
-					if (parent == callexpression->callee)
+					if (parent == symbol)
 					{
 						error(location, 3500, "recursive function calls are not allowed");
 
 						return false;
 					}
 
-					node = callexpression;
-				}
+					auto &callexpression = add_node(section, location, spv::OpFunctionCall, return_type);
+					callexpression.add(symbol);
 
-				type = node->type;
-
-				for (size_t i = 0; i < callexpression->arguments.size(); i++)
-				{
-					const auto argument = callexpression->arguments[i];
-					const auto parameter = callexpression->callee->parameter_list[i];
-
-					if (argument->type.rows > parameter->type.rows || argument->type.cols > parameter->type.cols)
+					for (size_t i = 0; i < arguments.size(); ++i)
 					{
-						warning(argument->location, 3206, "implicit truncation of vector type");
+						callexpression.add(arguments[i]);
 					}
+
+					node_id = callexpression.result;
 				}
+
+				type = lookup_id(node_id).type;
+
+				// TODO
+				//for (size_t i = 0; i < arguments.size(); ++i)
+				//{
+				//	const spv::Id argument = arguments[i];
+				//	const auto parameter = callexpression->callee->parameter_list[i];
+
+				//	if (argument->type.rows > parameter->type.rows || argument->type.cols > parameter->type.cols)
+				//	{
+				//		warning(argument->location, 3206, "implicit truncation of vector type");
+				//	}
+				//}
 			}
 			else
 			{
-				if (symbol == nullptr)
+				if (!symbol)
 				{
 					error(location, 3004, "undeclared identifier '" + identifier + "'");
 
 					return false;
 				}
 
-				if (symbol->id != nodeid::variable_declaration)
+				if (lookup_id(symbol).op != spv::OpVariable)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a function, not a variable");
 
 					return false;
 				}
 
-				const auto newexpression = _ast.make_node<lvalue_expression_node>(location);
-				newexpression->reference = static_cast<const variable_declaration_node *>(symbol);
-				newexpression->type = newexpression->reference->type;
+				// TODO Result
+				auto &newexpression = add_node(section, location, spv::OpLoad, 0xFF);
+				newexpression.add(symbol);
 
-				node = fold_constant_expression(_ast, newexpression);
-				type = node->type;
+				//newexpression->reference = static_cast<const variable_declaration_node *>(symbol);
+				//newexpression->type = newexpression->reference->type;
+
+				node_id = fold_constant_expression(newexpression.result);
+				type = lookup_id(node_id).type;
 			}
 		}
 		#pragma endregion
@@ -1383,30 +1573,33 @@ namespace reshadefx
 
 			if (accept_postfix_op(op))
 			{
+				const auto &node = lookup_id(node_id);
+
 				if (!type.is_scalar() && !type.is_vector() && !type.is_matrix())
 				{
-					error(node->location, 3022, "scalar, vector, or matrix expected");
+					error(node.location, 3022, "scalar, vector, or matrix expected");
 
 					return false;
 				}
 
 				if (type.has_qualifier(type_node::qualifier_const) || type.has_qualifier(type_node::qualifier_uniform))
 				{
-					error(node->location, 3025, "l-value specifies const object");
+					error(node.location, 3025, "l-value specifies const object");
 
 					return false;
 				}
 
-				const auto newexpression = _ast.make_node<unary_expression_node>(location);
-				newexpression->type = type;
-				newexpression->type.qualifiers |= type_node::qualifier_const;
-				newexpression->op = op;
-				newexpression->operand = node;
+				auto &newexpression = add_node(section, location, op, node.result_type);
+				newexpression.add(node_id);
+				newexpression.add(literal_1_float); // TODO
 
-				node = newexpression;
-				type = node->type;
+				newexpression.type = type;
+				newexpression.type.qualifiers |= type_node::qualifier_const;
+
+				node_id = newexpression.result;
+				type = newexpression.type;
 			}
-			else if (accept('.'))
+			/*else if (accept('.'))
 			{
 				if (!expect(tokenid::identifier))
 				{
@@ -1702,7 +1895,7 @@ namespace reshadefx
 				{
 					return false;
 				}
-			}
+			}*/
 			else
 			{
 				break;
@@ -1712,14 +1905,14 @@ namespace reshadefx
 
 		return true;
 	}
-	bool parser::parse_expression_multary(expression_node *&left, unsigned int left_precedence)
+	bool parser::parse_expression_multary(spv_section &section, spv::Id &left_id, unsigned int left_precedence)
 	{
-		if (!parse_expression_unary(left))
+		if (!parse_expression_unary(section, left_id))
 		{
 			return false;
 		}
 
-		enum binary_expression_node::op op;
+		spv::Op op;
 		unsigned int right_precedence;
 
 		while (peek_multary_op(op, right_precedence))
@@ -1732,183 +1925,198 @@ namespace reshadefx
 			consume();
 
 			bool boolean = false;
-			expression_node *right1 = nullptr, *right2 = nullptr;
+			spv::Id right_id = 0, right2_id = 0;
 
-			if (op != binary_expression_node::none)
+			if (op != spv::OpSelect)
 			{
-				if (!parse_expression_multary(right1, right_precedence))
+				if (!parse_expression_multary(section, right_id, right_precedence))
 				{
 					return false;
 				}
 
-				if (op == binary_expression_node::equal || op == binary_expression_node::not_equal)
+				const auto &left = lookup_id(left_id);
+				const auto &right = lookup_id(right_id);
+
+				if (op == spv::OpFOrdEqual || op == spv::OpFOrdNotEqual)
 				{
 					boolean = true;
 
-					if (left->type.is_array() || right1->type.is_array() || left->type.definition != right1->type.definition)
+					if (left.type.is_array() || right.type.is_array() || left.type.definition != right.type.definition)
 					{
-						error(right1->location, 3020, "type mismatch");
-
+						error(right.location, 3020, "type mismatch");
 						return false;
 					}
 				}
-				else if (op == binary_expression_node::bitwise_and || op == binary_expression_node::bitwise_or || op == binary_expression_node::bitwise_xor)
+				else if (op == spv::OpBitwiseAnd || op == spv::OpBitwiseOr || op == spv::OpBitwiseXor)
 				{
-					if (!left->type.is_integral())
+					if (!left.type.is_integral())
 					{
-						error(left->location, 3082, "int or unsigned int type required");
-
+						error(left.location, 3082, "int or unsigned int type required");
 						return false;
 					}
-					if (!right1->type.is_integral())
+					if (!right.type.is_integral())
 					{
-						error(right1->location, 3082, "int or unsigned int type required");
-
+						error(right.location, 3082, "int or unsigned int type required");
 						return false;
 					}
 				}
 				else
 				{
-					boolean = op == binary_expression_node::logical_and || op == binary_expression_node::logical_or || op == binary_expression_node::less || op == binary_expression_node::greater || op == binary_expression_node::less_equal || op == binary_expression_node::greater_equal;
+					boolean = op == spv::OpLogicalAnd || op == spv::OpLogicalOr ||
+						op == spv::OpFOrdLessThan || op == spv::OpFOrdGreaterThan ||
+						op == spv::OpFOrdLessThanEqual || op == spv::OpFOrdGreaterThanEqual;
 
-					if (!left->type.is_scalar() && !left->type.is_vector() && !left->type.is_matrix())
+					if (!left.type.is_scalar() && !left.type.is_vector() && !left.type.is_matrix())
 					{
-						error(left->location, 3022, "scalar, vector, or matrix expected");
-
+						error(left.location, 3022, "scalar, vector, or matrix expected");
 						return false;
 					}
-					if (!right1->type.is_scalar() && !right1->type.is_vector() && !right1->type.is_matrix())
+					if (!right.type.is_scalar() && !right.type.is_vector() && !right.type.is_matrix())
 					{
-						error(right1->location, 3022, "scalar, vector, or matrix expected");
-
+						error(right.location, 3022, "scalar, vector, or matrix expected");
 						return false;
 					}
 				}
 
-				const auto newexpression = _ast.make_node<binary_expression_node>(left->location);
-				newexpression->op = op;
-				newexpression->operands[0] = left;
-				newexpression->operands[1] = right1;
+				auto &newexpression = add_node(section, left.location, op, 0); // TODO Result Type
+				newexpression.add(left_id);
+				newexpression.add(right_id);
 
-				right2 = right1, right1 = left;
-				left = newexpression;
+				right2_id = right_id;
+				right_id = left_id;
+				left_id = newexpression.result;
 			}
 			else
 			{
-				if (!left->type.is_scalar() && !left->type.is_vector())
-				{
-					error(left->location, 3022, "boolean or vector expression expected");
+				const auto &left = lookup_id(left_id);
 
+				if (!left.type.is_scalar() && !left.type.is_vector())
+				{
+					error(left.location, 3022, "boolean or vector expression expected");
 					return false;
 				}
 
-				if (!(parse_expression(right1) && expect(':') && parse_expression_assignment(right2)))
+				if (!(parse_expression(section, right_id) && expect(':') && parse_expression_assignment(section, right2_id)))
 				{
 					return false;
 				}
 
-				if (right1->type.is_array() || right2->type.is_array() || right1->type.definition != right2->type.definition)
-				{
-					error(left->location, 3020, "type mismatch between conditional values");
+				const auto &right1 = lookup_id(right_id);
+				const auto &right2 = lookup_id(right2_id);
 
+				if (right1.type.is_array() || right2.type.is_array() || right1.type.definition != right2.type.definition)
+				{
+					error(right1.location, 3020, "type mismatch between conditional values");
 					return false;
 				}
 
-				const auto newexpression = _ast.make_node<conditional_expression_node>(left->location);
-				newexpression->condition = left;
-				newexpression->expression_when_true = right1;
-				newexpression->expression_when_false = right2;
+				auto &newexpression = add_node(section, lookup_id(left_id).location, spv::OpSelect, 0); // TODO Result Type
+				newexpression.add(left_id);
+				newexpression.add(right_id);
+				newexpression.add(right2_id);
 
-				left = newexpression;
+				left_id = newexpression.result;
 			}
 
-			if (boolean)
+			auto &result = lookup_id(left_id);
+			const auto &right1 = lookup_id(right_id);
+			const auto &right2 = lookup_id(right2_id);
+
+			result.type.basetype = boolean ? type_node::datatype_bool : std::max(right1.type.basetype, right2.type.basetype);
+
+			if ((right1.type.rows == 1 && right1.type.cols == 1) || (right2.type.rows == 1 && right2.type.cols == 1))
 			{
-				left->type.basetype = type_node::datatype_bool;
+				result.type.rows = std::max(right1.type.rows, right2.type.rows);
+				result.type.cols = std::max(right1.type.cols, right2.type.cols);
 			}
 			else
 			{
-				left->type.basetype = std::max(right1->type.basetype, right2->type.basetype);
-			}
+				result.type.rows = std::min(right1.type.rows, right2.type.rows);
+				result.type.cols = std::min(right1.type.cols, right2.type.cols);
 
-			if ((right1->type.rows == 1 && right2->type.cols == 1) || (right2->type.rows == 1 && right2->type.cols == 1))
-			{
-				left->type.rows = std::max(right1->type.rows, right2->type.rows);
-				left->type.cols = std::max(right1->type.cols, right2->type.cols);
-			}
-			else
-			{
-				left->type.rows = std::min(right1->type.rows, right2->type.rows);
-				left->type.cols = std::min(right1->type.cols, right2->type.cols);
-
-				if (right1->type.rows > right2->type.rows || right1->type.cols > right2->type.cols)
+				if (right1.type.rows > right2.type.rows || right1.type.cols > right2.type.cols)
 				{
-					warning(right1->location, 3206, "implicit truncation of vector type");
+					warning(right1.location, 3206, "implicit truncation of vector type");
 				}
-				if (right2->type.rows > right1->type.rows || right2->type.cols > right1->type.cols)
+				if (right2.type.rows > right1.type.rows || right2.type.cols > right1.type.cols)
 				{
-					warning(right2->location, 3206, "implicit truncation of vector type");
+					warning(right2.location, 3206, "implicit truncation of vector type");
 				}
 			}
 
-			left = fold_constant_expression(_ast, left);
+			result.result_type = 0; // TODO
+
+			left_id = fold_constant_expression(left_id);
 		}
 
 		return true;
 	}
-	bool parser::parse_expression_assignment(expression_node *&left)
+	bool parser::parse_expression_assignment(spv_section &section, spv::Id &left_id)
 	{
-		if (!parse_expression_multary(left))
+		if (!parse_expression_multary(section, left_id))
 		{
 			return false;
 		}
 
-		enum assignment_expression_node::op op;
+		spv::Op op;
 
 		if (accept_assignment_op(op))
 		{
-			expression_node *right = nullptr;
+			spv::Id right_id = 0;
 
-			if (!parse_expression_multary(right))
+			if (!parse_expression_multary(section, right_id))
 			{
 				return false;
 			}
 
-			if (left->type.has_qualifier(type_node::qualifier_const) || left->type.has_qualifier(type_node::qualifier_uniform))
-			{
-				error(left->location, 3025, "l-value specifies const object");
+			const auto &left = lookup_id(left_id);
+			const auto &right = lookup_id(right_id);
 
+			if (left.type.has_qualifier(type_node::qualifier_const) || left.type.has_qualifier(type_node::qualifier_uniform))
+			{
+				error(left.location, 3025, "l-value specifies const object");
 				return false;
 			}
 
-			if (left->type.is_array() || right->type.is_array() || !type_node::rank(left->type, right->type))
+			if (left.type.is_array() || right.type.is_array() || !type_node::rank(left.type, right.type))
 			{
-				error(right->location, 3020, "cannot convert these types");
-
+				error(right.location, 3020, "cannot convert these types");
 				return false;
 			}
 
-			if (right->type.rows > left->type.rows || right->type.cols > left->type.cols)
+			if (right.type.rows > left.type.rows || right.type.cols > left.type.cols)
 			{
-				warning(right->location, 3206, "implicit truncation of vector type");
+				warning(right.location, 3206, "implicit truncation of vector type");
 			}
 
-			const auto assignment = _ast.make_node<assignment_expression_node>(left->location);
-			assignment->type = left->type;
-			assignment->op = op;
-			assignment->left = left;
-			assignment->right = right;
+			if (op != spv::OpNop)
+			{
+				auto &newexpression = add_node(section, left.location, op, left.result_type);
+				newexpression.add(left_id);
+				newexpression.add(right_id);
 
-			left = assignment;
+				newexpression.type = lookup_id(left_id).type;
+
+				left_id = newexpression.result;
+			}
+
+			auto &assignment = add_node(section, left.location, spv::OpStore, left.result_type);
+			assignment.add(left_id);
+			assignment.add(right_id);
+
+			assignment.type = lookup_id(left_id).type;
+
+			left_id = assignment.result;
 		}
 
 		return true;
 	}
 
 	// Statements
-	bool parser::parse_statement(statement_node *&statement, bool scoped)
+	bool parser::parse_statement(spv_section &section, bool scoped)
 	{
-		std::vector<std::string> attributes;
+		unsigned int loop_control = spv::LoopControlMaskNone;
+		unsigned int selection_control = spv::SelectionControlMaskNone;
 
 		// Attributes
 		while (accept('['))
@@ -1919,7 +2127,18 @@ namespace reshadefx
 
 				if (expect(']'))
 				{
-					attributes.push_back(attribute);
+					if (attribute == "unroll")
+					{
+						loop_control |= spv::LoopControlUnrollMask;
+					}
+					else if (attribute == "flatten")
+					{
+						selection_control |= spv::SelectionControlFlattenMask;
+					}
+					else
+					{
+						warning(_token.location, 0, "unknown attribute");
+					}
 				}
 			}
 			else
@@ -1930,71 +2149,90 @@ namespace reshadefx
 
 		if (peek('{'))
 		{
-			if (!parse_statement_block(statement, scoped))
-			{
-				return false;
-			}
+			spv::Id label = 0;
 
-			statement->attributes = attributes;
-
-			return true;
+			return parse_statement_block(section, label, scoped);
 		}
 
 		if (accept(';'))
 		{
-			statement = nullptr;
-
 			return true;
 		}
 
 		#pragma region If
 		if (accept(tokenid::if_))
 		{
-			const auto newstatement = _ast.make_node<if_statement_node>(_token.location);
-			newstatement->attributes = attributes;
+			auto &merge = add_node_without_result(section, _token.location, spv::OpSelectionMerge);
+			merge.add(selection_control);
+			size_t merge_index = merge.index;
 
-			if (!(expect('(') && parse_expression(newstatement->condition) && expect(')')))
+			add_node_without_result(section, _token.location, spv::OpBranchConditional);
+
+			spv::Id condition = 0;
+
+			if (!(expect('(') && parse_expression(section, condition) && expect(')')))
 			{
 				return false;
 			}
 
-			if (!newstatement->condition->type.is_scalar())
+			if (!lookup_id(condition).type.is_scalar())
 			{
-				error(newstatement->condition->location, 3019, "if statement conditional expressions must evaluate to a scalar");
-
+				error(lookup_id(condition).location, 3019, "if statement conditional expressions must evaluate to a scalar");
 				return false;
 			}
 
-			if (!parse_statement(newstatement->statement_when_true))
+			section.instructions[merge_index].add(condition); // Condition
+
+			spv::Id true_label = add_node(section, _token.location, spv::OpLabel).result;
+
+			section.instructions[merge_index].add(true_label); // True Label
+
+			if (!parse_statement(section))
 			{
 				return false;
 			}
 
-			statement = newstatement;
+			spv::Id false_label = add_node(section, _token.location, spv::OpLabel).result;
+
+			section.instructions[merge_index].add(false_label); // False Label
 
 			if (accept(tokenid::else_))
 			{
-				return parse_statement(newstatement->statement_when_false);
+				if (!parse_statement(section))
+				{
+					return false;
+				}
 			}
+
+			size_t final_branch_index = add_node_without_result(section, _token.location, spv::OpBranch).index;
+
+			spv::Id continue_label = add_node(section, _token.location, spv::OpLabel).result;
+
+			section.instructions[final_branch_index].add(continue_label); // Target Label
 
 			return true;
 		}
 		#pragma endregion
 
 		#pragma region Switch
+#if 0
 		if (accept(tokenid::switch_))
 		{
-			const auto newstatement = _ast.make_node<switch_statement_node>(_token.location);
-			newstatement->attributes = attributes;
+			auto &merge = create_node(spv::OpSelectionMerge, _token.location);
+			merge.operands[0] = selection_control;
 
-			if (!(expect('(') && parse_expression(newstatement->test_expression) && expect(')')))
+			auto &branch = create_node_without_result(spv::OpSwitch, _token.location);
+
+			spv::Id selector = 0;
+
+			if (!(expect('(') && parse_expression(selector) && expect(')')))
 			{
 				return false;
 			}
 
-			if (!newstatement->test_expression->type.is_scalar())
+			if (!lookup_node(selector).type.is_scalar())
 			{
-				error(newstatement->test_expression->location, 3019, "switch statement expression must evaluate to a scalar");
+				error(lookup_node(selector).location, 3019, "switch statement expression must evaluate to a scalar");
 
 				return false;
 			}
@@ -2050,21 +2288,23 @@ namespace reshadefx
 				newstatement->case_list.push_back(casenode);
 			}
 
-			if (newstatement->case_list.empty())
-			{
-				warning(newstatement->location, 5002, "switch statement contains no 'case' or 'default' labels");
+			//if (newstatement->case_list.empty())
+			//{
+			//	warning(newstatement->location, 5002, "switch statement contains no 'case' or 'default' labels");
 
-				statement = nullptr;
-			}
-			else
-			{
-				statement = newstatement;
-			}
+			//	statement = nullptr;
+			//}
+			//else
+			//{
+			//	statement = newstatement;
+			//}
 
 			return expect('}');
 		}
+#endif
 		#pragma endregion
 
+#if 0
 		#pragma region For
 		if (accept(tokenid::for_))
 		{
@@ -2228,54 +2468,63 @@ namespace reshadefx
 			return expect(';');
 		}
 		#pragma endregion
+#endif
 
 		#pragma region Return
 		if (accept(tokenid::return_))
 		{
-			const auto newstatement = _ast.make_node<return_statement_node>(_token.location);
-			newstatement->attributes = attributes;
-			newstatement->is_discard = false;
-
-			const auto parent = static_cast<const function_declaration_node *>(_symbol_table->current_parent());
+			const auto parent = _symbol_table->current_parent();
+			const auto location = _token.location;
 
 			if (!peek(';'))
 			{
-				if (!parse_expression(newstatement->return_value))
+				spv::Id return_value = 0;
+
+				if (!parse_expression(section, return_value))
 				{
 					return false;
 				}
 
+#if 0
 				if (parent->return_type.is_void())
 				{
-					error(newstatement->location, 3079, "void functions cannot return a value");
+					error(location, 3079, "void functions cannot return a value");
 
 					accept(';');
 
 					return false;
 				}
 
-				if (!type_node::rank(newstatement->return_value->type, parent->return_type))
+				if (!type_node::rank(lookup_id(return_value).type, parent->return_type))
 				{
-					error(newstatement->location, 3017, "expression does not match function return type");
+					error(location, 3017, "expression does not match function return type");
 
 					return false;
 				}
 
-				if (newstatement->return_value->type.rows > parent->return_type.rows || newstatement->return_value->type.cols > parent->return_type.cols)
+				if (lookup_id(return_value).type.rows > parent->return_type.rows || lookup_id(return_value).type.cols > parent->return_type.cols)
 				{
-					warning(newstatement->location, 3206, "implicit truncation of vector type");
+					warning(location, 3206, "implicit truncation of vector type");
 				}
+#endif
+
+				auto &node = add_node_without_result(section, location, spv::OpReturnValue);
+				node.add(return_value);
 			}
+#if 0
 			else if (!parent->return_type.is_void())
 			{
-				error(newstatement->location, 3080, "function must return a value");
+				error(location, 3080, "function must return a value");
 
 				accept(';');
 
 				return false;
 			}
-
-			statement = newstatement;
+#endif
+			else
+			{
+				add_node_without_result(section, location, spv::OpReturn);
+			}
 
 			return expect(';');
 		}
@@ -2284,36 +2533,48 @@ namespace reshadefx
 		#pragma region Discard
 		if (accept(tokenid::discard_))
 		{
-			const auto newstatement = _ast.make_node<return_statement_node>(_token.location);
-			newstatement->attributes = attributes;
-			newstatement->is_discard = true;
-
-			statement = newstatement;
+			add_node_without_result(section, _token.location, spv::OpKill);
 
 			return expect(';');
 		}
 		#pragma endregion
 
 		#pragma region Declaration
-		if (parse_statement_declarator_list(statement))
+		const auto location = _token_next.location;
+
+		if (type_node type; parse_type(type))
 		{
-			statement->attributes = attributes;
+			unsigned int count = 0;
+
+			do
+			{
+				if (count++ > 0 && !expect(','))
+				{
+					return false;
+				}
+
+				if (!expect(tokenid::identifier))
+				{
+					return false;
+				}
+
+				spv::Id variable_id = 0;
+
+				if (!parse_variable_declaration(section, type, _token.literal_as_string, variable_id))
+				{
+					return false;
+				}
+			}
+			while (!peek(';'));
 
 			return expect(';');
 		}
 		#pragma endregion
 
 		#pragma region Expression
-		expression_node *expression = nullptr;
-
-		if (parse_expression(expression))
+		
+		if (spv::Id expression_id; parse_expression(section, expression_id))
 		{
-			const auto newstatement = _ast.make_node<expression_statement_node>(expression->location);
-			newstatement->attributes = attributes;
-			newstatement->expression = expression;
-
-			statement = newstatement;
-
 			return expect(';');
 		}
 		#pragma endregion
@@ -2324,25 +2585,23 @@ namespace reshadefx
 
 		return false;
 	}
-	bool parser::parse_statement_block(statement_node *&statement, bool scoped)
+	bool parser::parse_statement_block(spv_section &section, spv::Id &label, bool scoped)
 	{
 		if (!expect('{'))
 		{
 			return false;
 		}
 
-		const auto compound = _ast.make_node<compound_statement_node>(_token.location);
-
 		if (scoped)
 		{
 			_symbol_table->enter_scope();
 		}
 
+		label = add_node(section, _token.location, spv::OpLabel).result;
+
 		while (!peek('}') && !peek(tokenid::end_of_file))
 		{
-			statement_node *compound_statement = nullptr;
-
-			if (!parse_statement(compound_statement))
+			if (!parse_statement(section))
 			{
 				if (scoped)
 				{
@@ -2372,8 +2631,6 @@ namespace reshadefx
 
 				return false;
 			}
-
-			compound->statement_list.push_back(compound_statement);
 		}
 
 		if (scoped)
@@ -2381,50 +2638,7 @@ namespace reshadefx
 			_symbol_table->leave_scope();
 		}
 
-		statement = compound;
-
 		return expect('}');
-	}
-	bool parser::parse_statement_declarator_list(statement_node *&statement)
-	{
-		type_node type;
-
-		const auto location = _token_next.location;
-
-		if (!parse_type(type))
-		{
-			return false;
-		}
-
-		const auto declarators = _ast.make_node<declarator_list_node>(location);
-		unsigned int count = 0;
-
-		do
-		{
-			if (count++ > 0 && !expect(','))
-			{
-				return false;
-			}
-
-			if (!expect(tokenid::identifier))
-			{
-				return false;
-			}
-
-			variable_declaration_node *declarator = nullptr;
-
-			if (!parse_variable_declaration(type, _token.literal_as_string, declarator))
-			{
-				return false;
-			}
-
-			declarators->declarator_list.push_back(std::move(declarator));
-		}
-		while (!peek(';'));
-
-		statement = declarators;
-
-		return true;
 	}
 
 	// Declarations
@@ -2438,9 +2652,9 @@ namespace reshadefx
 		}
 		else if (peek(tokenid::struct_))
 		{
-			struct_declaration_node *structure = nullptr;
+			spv::Id type_id = 0;
 
-			if (!parse_struct(structure))
+			if (!parse_struct(type_id))
 			{
 				return false;
 			}
@@ -2452,14 +2666,14 @@ namespace reshadefx
 		}
 		else if (peek(tokenid::technique))
 		{
-			technique_declaration_node *technique = nullptr;
+			technique_properties technique;
 
 			if (!parse_technique(technique))
 			{
 				return false;
 			}
 
-			_ast.techniques.push_back(std::move(technique));
+			techniques.push_back(std::move(technique));
 		}
 		else if (parse_type(type))
 		{
@@ -2470,14 +2684,12 @@ namespace reshadefx
 
 			if (peek('('))
 			{
-				function_declaration_node *function = nullptr;
+				spv::Id function_id = 0;
 
-				if (!parse_function_declaration(type, _token.literal_as_string, function))
+				if (!parse_function_declaration(type, _token.literal_as_string, function_id))
 				{
 					return false;
 				}
-
-				_ast.functions.push_back(std::move(function));
 			}
 			else
 			{
@@ -2490,16 +2702,14 @@ namespace reshadefx
 						return false;
 					}
 
-					variable_declaration_node *variable = nullptr;
+					spv::Id variable_id = 0;
 
-					if (!parse_variable_declaration(type, _token.literal_as_string, variable, true))
+					if (!parse_variable_declaration(_variables, type, _token.literal_as_string, variable_id, true))
 					{
 						consume_until(';');
 
 						return false;
 					}
-
-					_ast.variables.push_back(std::move(variable));
 				}
 				while (!peek(';'));
 
@@ -2556,19 +2766,21 @@ namespace reshadefx
 
 		return success && expect('}');
 	}
+
 	bool parser::parse_array(int &size)
 	{
 		size = 0;
 
+#if 0
 		if (accept('['))
 		{
-			expression_node *expression;
+			spv::Id expression_id = 0;
 
 			if (accept(']'))
 			{
 				size = -1;
 			}
-			else if (parse_expression(expression) && expect(']'))
+			else if (parse_expression(expression_id) && expect(']'))
 			{
 				if (expression->id != nodeid::literal_expression || !(expression->type.is_scalar() && expression->type.is_integral()))
 				{
@@ -2591,6 +2803,7 @@ namespace reshadefx
 				return false;
 			}
 		}
+#endif
 
 		return true;
 	}
@@ -2616,72 +2829,72 @@ namespace reshadefx
 			}
 
 			const auto name = _token.literal_as_string;
-			literal_expression_node *expression = nullptr;
+			spv::Id expression_id = 0;
 
-			if (!(expect('=') && parse_expression_unary(reinterpret_cast<expression_node *&>(expression)) && expect(';')))
+			if (!(expect('=') && parse_expression_unary(_temporary, expression_id) && expect(';')))
 			{
 				return false;
 			}
 
-			if (expression->id != nodeid::literal_expression)
+			const auto &expression = lookup_id(expression_id);
+
+			if (expression.op != spv::OpConstant)
 			{
-				error(expression->location, 3011, "value must be a literal expression");
+				error(expression.location, 3011, "value must be a literal expression");
 
 				continue;
 			}
 
-			switch (expression->type.basetype)
-			{
-				case type_node::datatype_int:
-					annotations[name] = expression->value_int;
-					break;
-				case type_node::datatype_bool:
-				case type_node::datatype_uint:
-					annotations[name] = expression->value_uint;
-					break;
-				case type_node::datatype_float:
-					annotations[name] = expression->value_float;
-					break;
-				case type_node::datatype_string:
-					annotations[name] = expression->value_string;
-					break;
-			}
+			//switch (expression.type.basetype)
+			//{
+			//	case type_node::datatype_int:
+			//		annotations[name] = expression->value_int;
+			//		break;
+			//	case type_node::datatype_bool:
+			//	case type_node::datatype_uint:
+			//		annotations[name] = expression->value_uint;
+			//		break;
+			//	case type_node::datatype_float:
+			//		annotations[name] = expression->value_float;
+			//		break;
+			//	case type_node::datatype_string:
+			//		annotations[name] = expression->value_string;
+			//		break;
+			//}
 		}
 
 		return expect('>');
 	}
-	bool parser::parse_struct(struct_declaration_node *&structure)
+
+	bool parser::parse_struct(spv::Id &type_id)
 	{
 		if (!accept(tokenid::struct_))
 		{
 			return false;
 		}
 
-		structure = _ast.make_node<struct_declaration_node>(_token.location);
+		const auto location = _token.location;
+
+		std::string name;
 
 		if (accept(tokenid::identifier))
 		{
-			structure->name = _token.literal_as_string;
-
-			if (!_symbol_table->insert(structure, true))
-			{
-				error(_token.location, 3003, "redefinition of '" + structure->name + "'");
-
-				return false;
-			}
+			name = _token.literal_as_string;
 		}
 		else
 		{
-			structure->name = "__anonymous_struct_" + std::to_string(structure->location.line) + '_' + std::to_string(structure->location.column);
+			name = "__anonymous_struct_" + std::to_string(location.line) + '_' + std::to_string(location.column);
 		}
 
-		structure->unique_name = 'S' + _symbol_table->current_scope().name + structure->name;
-		std::replace(structure->unique_name.begin(), structure->unique_name.end(), ':', '_');
+		//structure->unique_name = 'S' + _symbol_table->current_scope().name + structure->name;
+		//std::replace(structure->unique_name.begin(), structure->unique_name.end(), ':', '_');
 
 		if (!expect('{'))
 		{
 			return false;
 		}
+
+		std::vector<spv::Id> field_list;
 
 		while (!peek('}'))
 		{
@@ -2731,29 +2944,31 @@ namespace reshadefx
 					return false;
 				}
 
-				const auto field = _ast.make_node<variable_declaration_node>(_token.location);
-				field->unique_name = field->name = _token.literal_as_string;
-				field->type = type;
+				spv::Id field = 0; // TODO
+				//auto &field = add_node(_variables, _token.location, spv::OpType
+				//const auto field = _ast.make_node<variable_declaration_node>(_token.location);
+				//field->unique_name = field->name = _token.literal_as_string;
+				//field->type = type;
 
-				if (!parse_array(field->type.array_length))
-				{
-					return false;
-				}
+				//if (!parse_array(field->type.array_length))
+				//{
+				//	return false;
+				//}
 
-				if (accept(':'))
-				{
-					if (!expect(tokenid::identifier))
-					{
-						consume_until('}');
+				//if (accept(':'))
+				//{
+				//	if (!expect(tokenid::identifier))
+				//	{
+				//		consume_until('}');
 
-						return false;
-					}
+				//		return false;
+				//	}
 
-					field->semantic = _token.literal_as_string;
-					std::transform(field->semantic.begin(), field->semantic.end(), field->semantic.begin(), ::toupper);
-				}
+				//	field->semantic = _token.literal_as_string;
+				//	std::transform(field->semantic.begin(), field->semantic.end(), field->semantic.begin(), ::toupper);
+				//}
 
-				structure->field_list.push_back(std::move(field));
+				field_list.push_back(std::move(field));
 			}
 			while (!peek(';'));
 
@@ -2765,16 +2980,35 @@ namespace reshadefx
 			}
 		}
 
-		if (structure->field_list.empty())
+		if (field_list.empty())
 		{
-			warning(structure->location, 5001, "struct has no members");
+			warning(location, 5001, "struct has no members");
+
+			auto &structure = add_node(_variables, _token.location, spv::OpTypeOpaque);
+
+			type_id = structure.result;
+		}
+		else
+		{
+			auto &structure = add_node(_variables, _token.location, spv::OpTypeStruct);
+
+
+			//structure.operands
+
+			type_id = structure.result;
 		}
 
-		_ast.structs.push_back(structure);
+		if (!_symbol_table->insert(name, type_id, spv::OpTypeStruct, nullptr, true))
+		{
+			error(_token.location, 3003, "redefinition of '" + name + "'");
+
+			return false;
+		}
 
 		return expect('}');
 	}
-	bool parser::parse_function_declaration(type_node &type, std::string name, function_declaration_node *&function)
+
+	bool parser::parse_function_declaration(type_node &type, std::string name, spv::Id &function_id)
 	{
 		const auto location = _token.location;
 
@@ -2790,30 +3024,39 @@ namespace reshadefx
 			return false;
 		}
 
-		function = _ast.make_node<function_declaration_node>(location);
-		function->return_type = type;
-		function->return_type.qualifiers = type_node::qualifier_const;
-		function->name = name;
+		auto &function = add_node(_functions, location, spv::OpFunction, lookup_type(type)); // TODO
+		function.add(spv::FunctionControlInlineMask); // Function Control
+		function.add(-1); // Function Type
 
-		function->unique_name = 'F' + _symbol_table->current_scope().name + function->name;
-		std::replace(function->unique_name.begin(), function->unique_name.end(), ':', '_');
+		function_id = function.result;
 
-		_symbol_table->insert(function, true);
+		function.type = type;
+		function.type.qualifiers = type_node::qualifier_const;
+		//function->name = name;
 
-		_symbol_table->enter_scope(function);
+		//function->unique_name = 'F' + _symbol_table->current_scope().name + function->name;
+		//std::replace(function->unique_name.begin(), function->unique_name.end(), ':', '_');
+
+		auto props = new function_properties(); // TODO LEEAAK
+
+		_symbol_table->insert(name, function_id, spv::OpTypeFunction, props, true);
+
+		_symbol_table->enter_scope(function_id);
+
+		unsigned int num_params = 0;
 
 		while (!peek(')'))
 		{
-			if (!function->parameter_list.empty() && !expect(','))
+			if (num_params != 0 && !expect(','))
 			{
 				_symbol_table->leave_scope();
 
 				return false;
 			}
 
-			const auto parameter = _ast.make_node<variable_declaration_node>(struct location());
+			type_node param_type;
 
-			if (!parse_type(parameter->type))
+			if (!parse_type(param_type))
 			{
 				_symbol_table->leave_scope();
 
@@ -2829,47 +3072,54 @@ namespace reshadefx
 				return false;
 			}
 
-			parameter->unique_name = parameter->name = _token.literal_as_string;
-			parameter->location = _token.location;
+			std::string param_name = _token.literal_as_string;
 
-			if (parameter->type.is_void())
+			props->parameter_list.push_back(param_type);
+
+			auto &param = add_node(_functions, _token.location, spv::OpFunctionParameter, lookup_type(param_type));
+
+			param.type = param_type;
+
+			//parameter->unique_name = parameter->name = _token.literal_as_string;
+
+			if (param.type.is_void())
 			{
-				error(parameter->location, 3038, "function parameters cannot be void");
+				error(param.location, 3038, "function parameters cannot be void");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (parameter->type.has_qualifier(type_node::qualifier_extern))
+			if (param.type.has_qualifier(type_node::qualifier_extern))
 			{
-				error(parameter->location, 3006, "function parameters cannot be declared 'extern'");
+				error(param.location, 3006, "function parameters cannot be declared 'extern'");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (parameter->type.has_qualifier(type_node::qualifier_static))
+			if (param.type.has_qualifier(type_node::qualifier_static))
 			{
-				error(parameter->location, 3007, "function parameters cannot be declared 'static'");
+				error(param.location, 3007, "function parameters cannot be declared 'static'");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
-			if (parameter->type.has_qualifier(type_node::qualifier_uniform))
+			if (param.type.has_qualifier(type_node::qualifier_uniform))
 			{
-				error(parameter->location, 3047, "function parameters cannot be declared 'uniform', consider placing in global scope instead");
+				error(param.location, 3047, "function parameters cannot be declared 'uniform', consider placing in global scope instead");
 
 				_symbol_table->leave_scope();
 
 				return false;
 			}
 
-			if (parameter->type.has_qualifier(type_node::qualifier_out))
+			if (param.type.has_qualifier(type_node::qualifier_out))
 			{
-				if (parameter->type.has_qualifier(type_node::qualifier_const))
+				if (param_type.has_qualifier(type_node::qualifier_const))
 				{
-					error(parameter->location, 3046, "output parameters cannot be declared 'const'");
+					error(param.location, 3046, "output parameters cannot be declared 'const'");
 
 					_symbol_table->leave_scope();
 
@@ -2878,17 +3128,17 @@ namespace reshadefx
 			}
 			else
 			{
-				parameter->type.qualifiers |= type_node::qualifier_in;
+				param.type.qualifiers |= type_node::qualifier_in;
 			}
 
-			if (!parse_array(parameter->type.array_length))
+			if (!parse_array(param.type.array_length))
 			{
 				return false;
 			}
 
-			if (!_symbol_table->insert(parameter))
+			if (!_symbol_table->insert(param_name, param.result, spv::OpVariable, nullptr))
 			{
-				error(parameter->location, 3003, "redefinition of '" + parameter->name + "'");
+				error(param.location, 3003, "redefinition of '" + param_name + "'");
 
 				_symbol_table->leave_scope();
 
@@ -2904,11 +3154,12 @@ namespace reshadefx
 					return false;
 				}
 
-				parameter->semantic = _token.literal_as_string;
-				std::transform(parameter->semantic.begin(), parameter->semantic.end(), parameter->semantic.begin(), ::toupper);
+				// TODO
+				//parameter->semantic = _token.literal_as_string;
+				//std::transform(parameter->semantic.begin(), parameter->semantic.end(), parameter->semantic.begin(), ::toupper);
 			}
 
-			function->parameter_list.push_back(parameter);
+			num_params++;
 		}
 
 		if (!expect(')'))
@@ -2927,8 +3178,9 @@ namespace reshadefx
 				return false;
 			}
 
-			function->return_semantic = _token.literal_as_string;
-			std::transform(function->return_semantic.begin(), function->return_semantic.end(), function->return_semantic.begin(), ::toupper);
+			// TODO
+			//function->return_semantic = _token.literal_as_string;
+			//std::transform(function->return_semantic.begin(), function->return_semantic.end(), function->return_semantic.begin(), ::toupper);
 
 			if (type.is_void())
 			{
@@ -2938,7 +3190,9 @@ namespace reshadefx
 			}
 		}
 
-		if (!parse_statement_block(reinterpret_cast<statement_node *&>(function->definition), false))
+		spv::Id definition = 0;
+
+		if (!parse_statement_block(_functions, definition, false))
 		{
 			_symbol_table->leave_scope();
 
@@ -2949,7 +3203,8 @@ namespace reshadefx
 
 		return true;
 	}
-	bool parser::parse_variable_declaration(type_node &type, std::string name, variable_declaration_node *&variable, bool global)
+
+	bool parser::parse_variable_declaration(spv_section &section, type_node &type, std::string name, spv::Id &variable_id, bool global)
 	{
 		auto location = _token.location;
 
@@ -2968,7 +3223,7 @@ namespace reshadefx
 
 		const auto parent = _symbol_table->current_parent();
 
-		if (parent == nullptr)
+		if (!parent)
 		{
 			if (!type.has_qualifier(type_node::qualifier_static))
 			{
@@ -3015,25 +3270,17 @@ namespace reshadefx
 			return false;
 		}
 
-		variable = _ast.make_node<variable_declaration_node>(location);
-		variable->type = type;
-		variable->name = name;
+		spv::StorageClass storage = spv::StorageClassGeneric;
 
 		if (global)
 		{
-			variable->unique_name = (type.has_qualifier(type_node::qualifier_uniform) ? 'U' : 'V') + _symbol_table->current_scope().name + variable->name;
-			std::replace(variable->unique_name.begin(), variable->unique_name.end(), ':', '_');
+			//variable->unique_name = (type.has_qualifier(type_node::qualifier_uniform) ? 'U' : 'V') + _symbol_table->current_scope().name + variable->name;
+			//std::replace(variable->unique_name.begin(), variable->unique_name.end(), ':', '_');
 		}
 		else
 		{
-			variable->unique_name = variable->name;
-		}
-
-		if (!_symbol_table->insert(variable, global))
-		{
-			error(location, 3003, "redefinition of '" + name + "'");
-
-			return false;
+			//variable->unique_name = variable->name;
+			storage = spv::StorageClassFunction;
 		}
 
 		if (accept(':'))
@@ -3043,13 +3290,17 @@ namespace reshadefx
 				return false;
 			}
 
-			variable->semantic = _token.literal_as_string;
-			std::transform(variable->semantic.begin(), variable->semantic.end(), variable->semantic.begin(), ::toupper);
+			// TODO
+			//variable->semantic = _token.literal_as_string;
+			//std::transform(variable->semantic.begin(), variable->semantic.end(), variable->semantic.begin(), ::toupper);
 
 			return true;
 		}
 
-		if (global && !parse_annotations(variable->annotation_list))
+		variable_properties props; // TODO
+		spv::Id initializer_id = 0;
+
+		if (global && !parse_annotations(props.annotation_list))
 		{
 			return false;
 		}
@@ -3058,18 +3309,19 @@ namespace reshadefx
 		{
 			location = _token.location;
 
-			if (!parse_variable_assignment(variable->initializer_expression))
+			if (!parse_variable_assignment(section, initializer_id))
 			{
 				return false;
 			}
 
-			if (parent == nullptr && variable->initializer_expression->id != nodeid::literal_expression)
+			if (!parent && lookup_id(initializer_id).op != spv::OpConstant)
 			{
 				error(location, 3011, "initial value must be a literal expression");
 
 				return false;
 			}
 
+#if 0 // TODO
 			if (variable->initializer_expression->id == nodeid::initializer_list && type.is_numeric())
 			{
 				const auto nullval = _ast.make_node<literal_expression_node>(location);
@@ -3085,21 +3337,22 @@ namespace reshadefx
 					initializerlist->values.push_back(nullval);
 				}
 			}
+#endif
 
-			if (!type_node::rank(variable->initializer_expression->type, type))
+			if (!type_node::rank(lookup_id(initializer_id).type, type))
 			{
 				error(location, 3017, "initial value does not match variable type");
 
 				return false;
 			}
-			if ((variable->initializer_expression->type.rows < type.rows || variable->initializer_expression->type.cols < type.cols) && !variable->initializer_expression->type.is_scalar())
+			if ((lookup_id(initializer_id).type.rows < type.rows || lookup_id(initializer_id).type.cols < type.cols) && !lookup_id(initializer_id).type.is_scalar())
 			{
 				error(location, 3017, "cannot implicitly convert these vector types");
 
 				return false;
 			}
 
-			if (variable->initializer_expression->type.rows > type.rows || variable->initializer_expression->type.cols > type.cols)
+			if (lookup_id(initializer_id).type.rows > type.rows || lookup_id(initializer_id).type.cols > type.cols)
 			{
 				warning(location, 3206, "implicit truncation of vector type");
 			}
@@ -3114,32 +3367,46 @@ namespace reshadefx
 			}
 			else if (!type.has_qualifier(type_node::qualifier_uniform) && !type.is_array())
 			{
-				const auto zero_initializer = _ast.make_node<literal_expression_node>(location);
-				zero_initializer->type = type;
-				zero_initializer->type.qualifiers = type_node::qualifier_const;
-
-				variable->initializer_expression = zero_initializer;
+				initializer_id = literal_0_float; // TODO
 			}
 		}
 		else if (peek('{'))
 		{
-			if (!parse_variable_properties(variable))
+			if (!parse_variable_properties(props))
 			{
 				return false;
 			}
 		}
 
-		if (type.is_sampler() && variable->properties.texture == nullptr)
+		if (type.is_sampler() && !props.texture)
 		{
 			error(location, 3012, "missing 'Texture' property for '" + name + "'");
 
 			return false;
 		}
 
+		auto &variable = add_node(_variables, location, spv::OpVariable, lookup_type(type)); // TODO
+		variable.add(storage);
+		if (initializer_id)
+			variable.add(initializer_id);
+
+		variable_id = variable.result;
+
+		if (!_symbol_table->insert(name, variable_id, spv::OpVariable, nullptr, global))
+		{
+			error(location, 3003, "redefinition of '" + name + "'");
+
+			return false;
+		}
+
+		variable.type = type;
+
 		return true;
 	}
-	bool parser::parse_variable_assignment(expression_node *&expression)
+
+	bool parser::parse_variable_assignment(spv_section &section, spv::Id &expression)
 	{
+#if 0 // TODO
 		if (accept('{'))
 		{
 			const auto initializerlist = _ast.make_node<initializer_list_node>(_token.location);
@@ -3181,10 +3448,12 @@ namespace reshadefx
 
 			return expect('}');
 		}
+#endif
 
-		return parse_expression_assignment(expression);
+		return parse_expression_assignment(section, expression);
 	}
-	bool parser::parse_variable_properties(variable_declaration_node *variable)
+
+	bool parser::parse_variable_properties(variable_properties &props)
 	{
 		if (!expect('{'))
 		{
@@ -3201,121 +3470,121 @@ namespace reshadefx
 			const auto name = _token.literal_as_string;
 			const auto location = _token.location;
 
-			expression_node *value = nullptr;
+			spv::Id value_id = 0;
 
-			if (!(expect('=') && parse_variable_properties_expression(value) && expect(';')))
+			if (!(expect('=') && parse_variable_properties_expression(value_id) && expect(';')))
 			{
 				return false;
 			}
 
 			if (name == "Texture")
 			{
-				if (value->id != nodeid::lvalue_expression || static_cast<lvalue_expression_node *>(value)->reference->id != nodeid::variable_declaration || !static_cast<lvalue_expression_node *>(value)->reference->type.is_texture() || static_cast<lvalue_expression_node *>(value)->reference->type.is_array())
+				if (lookup_id(value_id).op != spv::OpImage)
 				{
 					error(location, 3020, "type mismatch, expected texture name");
 
 					return false;
 				}
 
-				variable->properties.texture = static_cast<lvalue_expression_node *>(value)->reference;
+				props.texture = value_id;
 			}
 			else
 			{
-				if (value->id != nodeid::literal_expression)
+				if (lookup_id(value_id).op != spv::OpConstant)
 				{
 					error(location, 3011, "value must be a literal expression");
 
 					return false;
 				}
 
-				const auto value_literal = static_cast<literal_expression_node *>(value);
+				const auto value_literal = lookup_id(value_id).operands[0]; // TODO
 
 				if (name == "Width")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.width);
+					//scalar_literal_cast(value_literal, 0, props.width);
 				}
 				else if (name == "Height")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.height);
+					//scalar_literal_cast(value_literal, 0, props.height);
 				}
 				else if (name == "Depth")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.depth);
+					//scalar_literal_cast(value_literal, 0, props.depth);
 				}
 				else if (name == "MipLevels")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.levels);
+					//scalar_literal_cast(value_literal, 0, props.levels);
 
-					if (variable->properties.levels == 0)
+					if (props.levels == 0)
 					{
 						warning(location, 0, "a texture cannot have 0 mipmap levels, changed it to 1");
 
-						variable->properties.levels = 1;
+						props.levels = 1;
 					}
 				}
 				else if (name == "Format")
 				{
-					unsigned int format;
-					scalar_literal_cast(value_literal, 0, format);
-					variable->properties.format = static_cast<reshade::texture_format>(format);
+					unsigned int format = value_literal;
+					//scalar_literal_cast(value_literal, 0, format);
+					props.format = static_cast<reshade::texture_format>(format);
 				}
 				else if (name == "SRGBTexture" || name == "SRGBReadEnable")
 				{
-					variable->properties.srgb_texture = value_literal->value_int[0] != 0;
+					props.srgb_texture = value_literal != 0;
 				}
 				else if (name == "AddressU")
 				{
-					unsigned address_mode;
-					scalar_literal_cast(value_literal, 0, address_mode);
-					variable->properties.address_u = static_cast<reshade::texture_address_mode>(address_mode);
+					unsigned address_mode = value_literal;
+					//scalar_literal_cast(value_literal, 0, address_mode);
+					props.address_u = static_cast<reshade::texture_address_mode>(address_mode);
 				}
 				else if (name == "AddressV")
 				{
-					unsigned address_mode;
-					scalar_literal_cast(value_literal, 0, address_mode);
-					variable->properties.address_v = static_cast<reshade::texture_address_mode>(address_mode);
+					unsigned address_mode = value_literal;
+					//scalar_literal_cast(value_literal, 0, address_mode);
+					props.address_v = static_cast<reshade::texture_address_mode>(address_mode);
 				}
 				else if (name == "AddressW")
 				{
-					unsigned address_mode;
-					scalar_literal_cast(value_literal, 0, address_mode);
-					variable->properties.address_w = static_cast<reshade::texture_address_mode>(address_mode);
+					unsigned address_mode = value_literal;
+					//scalar_literal_cast(value_literal, 0, address_mode);
+					props.address_w = static_cast<reshade::texture_address_mode>(address_mode);
 				}
 				else if (name == "MinFilter")
 				{
-					unsigned int a = static_cast<unsigned int>(variable->properties.filter), b;
-					scalar_literal_cast(value_literal, 0, b);
+					unsigned int a = static_cast<unsigned int>(props.filter), b = value_literal;
+					//scalar_literal_cast(value_literal, 0, b);
 
 					b = (a & 0x0F) | ((b << 4) & 0x30);
-					variable->properties.filter = static_cast<reshade::texture_filter>(b);
+					props.filter = static_cast<reshade::texture_filter>(b);
 				}
 				else if (name == "MagFilter")
 				{
-					unsigned int a = static_cast<unsigned int>(variable->properties.filter), b;
-					scalar_literal_cast(value_literal, 0, b);
+					unsigned int a = static_cast<unsigned int>(props.filter), b = value_literal;
+					//scalar_literal_cast(value_literal, 0, b);
 
 					b = (a & 0x33) | ((b << 2) & 0x0C);
-					variable->properties.filter = static_cast<reshade::texture_filter>(b);
+					props.filter = static_cast<reshade::texture_filter>(b);
 				}
 				else if (name == "MipFilter")
 				{
-					unsigned int a = static_cast<unsigned int>(variable->properties.filter), b;
-					scalar_literal_cast(value_literal, 0, b);
+					unsigned int a = static_cast<unsigned int>(props.filter), b = value_literal;
+					//scalar_literal_cast(value_literal, 0, b);
 
 					b = (a & 0x3C) | (b & 0x03);
-					variable->properties.filter = static_cast<reshade::texture_filter>(b);
+					props.filter = static_cast<reshade::texture_filter>(b);
 				}
 				else if (name == "MinLOD" || name == "MaxMipLevel")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.min_lod);
+					//scalar_literal_cast(value_literal, 0, props.min_lod);
 				}
 				else if (name == "MaxLOD")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.max_lod);
+					//scalar_literal_cast(value_literal, 0, props.max_lod);
 				}
 				else if (name == "MipLODBias" || name == "MipMapLodBias")
 				{
-					scalar_literal_cast(value_literal, 0, variable->properties.lod_bias);
+					//scalar_literal_cast(value_literal, 0, props.lod_bias);
 				}
 				else
 				{
@@ -3333,7 +3602,222 @@ namespace reshadefx
 
 		return true;
 	}
-	bool parser::parse_variable_properties_expression(expression_node *&expression)
+
+	bool parser::parse_technique(technique_properties &technique)
+	{
+		if (!accept(tokenid::technique))
+		{
+			return false;
+		}
+
+		technique.location = _token.location;
+
+		if (!expect(tokenid::identifier))
+		{
+			return false;
+		}
+
+		technique.name = _token.literal_as_string;
+		technique.unique_name = 'T' + _symbol_table->current_scope().name + technique.name;
+		std::replace(technique.unique_name.begin(), technique.unique_name.end(), ':', '_');
+
+		if (!parse_annotations(technique.annotation_list))
+		{
+			return false;
+		}
+
+		if (!expect('{'))
+		{
+			return false;
+		}
+
+		while (!peek('}'))
+		{
+			pass_properties pass;
+
+			if (!parse_technique_pass(pass))
+			{
+				return false;
+			}
+
+			technique.pass_list.push_back(std::move(pass));
+		}
+
+		return expect('}');
+	}
+	bool parser::parse_technique_pass(pass_properties &pass)
+	{
+		if (!expect(tokenid::pass))
+		{
+			return false;
+		}
+
+		pass.location = _token.location;
+
+		if (accept(tokenid::identifier))
+		{
+			pass.name = _token.literal_as_string;
+		}
+
+		if (!expect('{'))
+		{
+			return false;
+		}
+
+		while (!peek('}'))
+		{
+			if (!expect(tokenid::identifier))
+			{
+				return false;
+			}
+
+			const auto passstate = _token.literal_as_string;
+			const auto location = _token.location;
+
+			spv::Id value_id = 0;
+
+			if (!(expect('=') && parse_technique_pass_expression(value_id) && expect(';')))
+			{
+				return false;
+			}
+
+			if (passstate == "VertexShader" || passstate == "PixelShader")
+			{
+				if (lookup_id(value_id).op != spv::OpFunction)
+				{
+					error(location, 3020, "type mismatch, expected function name");
+
+					return false;
+				}
+
+				if (passstate[0] != 'V')
+					pass.pixel_shader = value_id;
+				else
+					pass.vertex_shader = value_id;
+			}
+			else if (passstate.compare(0, 12, "RenderTarget") == 0 && (passstate == "RenderTarget" || (passstate[12] >= '0' && passstate[12] < '8')))
+			{
+				size_t index = 0;
+
+				if (passstate.size() == 13)
+				{
+					index = passstate[12] - '0';
+				}
+
+				if (lookup_id(value_id).op != spv::OpImage)
+				{
+					error(location, 3020, "type mismatch, expected texture name");
+
+					return false;
+				}
+
+				pass.render_targets[index] = value_id;
+			}
+			else
+			{
+				if (lookup_id(value_id).op != spv::OpConstant)
+				{
+					error(location, 3011, "pass state value must be a literal expression");
+
+					return false;
+				}
+
+				const auto value_literal = lookup_id(value_id).operands[0];
+
+				if (passstate == "SRGBWriteEnable")
+				{
+					pass.srgb_write_enable = value_literal != 0;
+				}
+				else if (passstate == "BlendEnable")
+				{
+					pass.blend_enable = value_literal != 0;
+				}
+				else if (passstate == "StencilEnable")
+				{
+					pass.stencil_enable = value_literal != 0;
+				}
+				else if (passstate == "ClearRenderTargets")
+				{
+					pass.clear_render_targets = value_literal != 0;
+				}
+				else if (passstate == "RenderTargetWriteMask" || passstate == "ColorWriteMask")
+				{
+					unsigned int mask = value_literal; // TODO
+					//scalar_literal_cast(value_literal, 0, mask);
+
+					pass.color_write_mask = mask & 0xFF;
+				}
+				else if (passstate == "StencilReadMask" || passstate == "StencilMask")
+				{
+					unsigned int mask = value_literal; // TODO
+					//scalar_literal_cast(value_literal, 0, mask);
+
+					pass.stencil_read_mask = mask & 0xFF;
+				}
+				else if (passstate == "StencilWriteMask")
+				{
+					unsigned int mask = value_literal; // TODO
+					//scalar_literal_cast(value_literal, 0, mask);
+
+					pass.stencil_write_mask = mask & 0xFF;
+				}
+				else if (passstate == "BlendOp")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.blend_op);
+				}
+				else if (passstate == "BlendOpAlpha")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.blend_op_alpha);
+				}
+				else if (passstate == "SrcBlend")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.src_blend);
+				}
+				else if (passstate == "SrcBlendAlpha")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.src_blend_alpha);
+				}
+				else if (passstate == "DestBlend")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.dest_blend);
+				}
+				else if (passstate == "DestBlend")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.dest_blend_alpha);
+				}
+				else if (passstate == "StencilFunc")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.stencil_comparison_func);
+				}
+				else if (passstate == "StencilRef")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.stencil_reference_value);
+				}
+				else if (passstate == "StencilPass" || passstate == "StencilPassOp")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.stencil_op_pass);
+				}
+				else if (passstate == "StencilFail" || passstate == "StencilFailOp")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.stencil_op_fail);
+				}
+				else if (passstate == "StencilZFail" || passstate == "StencilDepthFail" || passstate == "StencilDepthFailOp")
+				{
+					//scalar_literal_cast(value_literal, 0, pass.stencil_op_depth_fail);
+				}
+				else
+				{
+					error(location, 3004, "unrecognized pass state '" + passstate + "'");
+
+					return false;
+				}
+			}
+		}
+
+		return expect('}');
+	}
+
+	bool parser::parse_variable_properties_expression(spv::Id &expression)
 	{
 		backup();
 
@@ -3382,12 +3866,13 @@ namespace reshadefx
 			{
 				if (value.first == _token.literal_as_string)
 				{
-					const auto newexpression = _ast.make_node<literal_expression_node>(location);
-					newexpression->type.basetype = type_node::datatype_uint;
-					newexpression->type.rows = newexpression->type.cols = 1, newexpression->type.array_length = 0;
-					newexpression->value_uint[0] = value.second;
+					auto &newexpression = add_node(_temporary, location, spv::OpConstant, type_uint);
+					newexpression.add(value.second);
 
-					expression = newexpression;
+					newexpression.type.basetype = type_node::datatype_uint;
+					newexpression.type.rows = newexpression.type.cols = 1, newexpression.type.array_length = 0;
+
+					expression = newexpression.result;
 
 					return true;
 				}
@@ -3396,221 +3881,9 @@ namespace reshadefx
 			restore();
 		}
 
-		return parse_expression_multary(expression);
+		return parse_expression_multary(_temporary, expression);
 	}
-	bool parser::parse_technique(technique_declaration_node *&technique)
-	{
-		if (!accept(tokenid::technique))
-		{
-			return false;
-		}
-
-		const auto location = _token.location;
-
-		if (!expect(tokenid::identifier))
-		{
-			return false;
-		}
-
-		technique = _ast.make_node<technique_declaration_node>(location);
-		technique->name = _token.literal_as_string;
-
-		technique->unique_name = 'T' + _symbol_table->current_scope().name + technique->name;
-		std::replace(technique->unique_name.begin(), technique->unique_name.end(), ':', '_');
-
-		if (!parse_annotations(technique->annotation_list))
-		{
-			return false;
-		}
-
-		if (!expect('{'))
-		{
-			return false;
-		}
-
-		while (!peek('}'))
-		{
-			pass_declaration_node *pass = nullptr;
-
-			if (!parse_technique_pass(pass))
-			{
-				return false;
-			}
-
-			technique->pass_list.push_back(std::move(pass));
-		}
-
-		return expect('}');
-	}
-	bool parser::parse_technique_pass(pass_declaration_node *&pass)
-	{
-		if (!expect(tokenid::pass))
-		{
-			return false;
-		}
-
-		pass = _ast.make_node<pass_declaration_node>(_token.location);
-
-		if (accept(tokenid::identifier))
-		{
-			pass->unique_name = pass->name = _token.literal_as_string;
-		}
-
-		if (!expect('{'))
-		{
-			return false;
-		}
-
-		while (!peek('}'))
-		{
-			if (!expect(tokenid::identifier))
-			{
-				return false;
-			}
-
-			const auto passstate = _token.literal_as_string;
-			const auto location = _token.location;
-
-			expression_node *value = nullptr;
-
-			if (!(expect('=') && parse_technique_pass_expression(value) && expect(';')))
-			{
-				return false;
-			}
-
-			if (passstate == "VertexShader" || passstate == "PixelShader")
-			{
-				if (value->id != nodeid::lvalue_expression || static_cast<lvalue_expression_node *>(value)->reference->id != nodeid::function_declaration)
-				{
-					error(location, 3020, "type mismatch, expected function name");
-
-					return false;
-				}
-
-				(passstate[0] == 'V' ? pass->vertex_shader : pass->pixel_shader) = reinterpret_cast<const function_declaration_node *>(static_cast<lvalue_expression_node *>(value)->reference);
-			}
-			else if (passstate.compare(0, 12, "RenderTarget") == 0 && (passstate == "RenderTarget" || (passstate[12] >= '0' && passstate[12] < '8')))
-			{
-				size_t index = 0;
-
-				if (passstate.size() == 13)
-				{
-					index = passstate[12] - '0';
-				}
-
-				if (value->id != nodeid::lvalue_expression || static_cast<lvalue_expression_node *>(value)->reference->id != nodeid::variable_declaration || static_cast<lvalue_expression_node *>(value)->reference->type.basetype != type_node::datatype_texture || static_cast<lvalue_expression_node *>(value)->reference->type.is_array())
-				{
-					error(location, 3020, "type mismatch, expected texture name");
-
-					return false;
-				}
-
-				pass->render_targets[index] = static_cast<lvalue_expression_node *>(value)->reference;
-			}
-			else
-			{
-				if (value->id != nodeid::literal_expression)
-				{
-					error(location, 3011, "pass state value must be a literal expression");
-
-					return false;
-				}
-
-				const auto value_literal = static_cast<literal_expression_node *>(value);
-
-				if (passstate == "SRGBWriteEnable")
-				{
-					pass->srgb_write_enable = value_literal->value_int[0] != 0;
-				}
-				else if (passstate == "BlendEnable")
-				{
-					pass->blend_enable = value_literal->value_int[0] != 0;
-				}
-				else if (passstate == "StencilEnable")
-				{
-					pass->stencil_enable = value_literal->value_int[0] != 0;
-				}
-				else if (passstate == "ClearRenderTargets")
-				{
-					pass->clear_render_targets = value_literal->value_int[0] != 0;
-				}
-				else if (passstate == "RenderTargetWriteMask" || passstate == "ColorWriteMask")
-				{
-					unsigned int mask = 0;
-					scalar_literal_cast(value_literal, 0, mask);
-
-					pass->color_write_mask = mask & 0xFF;
-				}
-				else if (passstate == "StencilReadMask" || passstate == "StencilMask")
-				{
-					unsigned int mask = 0;
-					scalar_literal_cast(value_literal, 0, mask);
-
-					pass->stencil_read_mask = mask & 0xFF;
-				}
-				else if (passstate == "StencilWriteMask")
-				{
-					unsigned int mask = 0;
-					scalar_literal_cast(value_literal, 0, mask);
-
-					pass->stencil_write_mask = mask & 0xFF;
-				}
-				else if (passstate == "BlendOp")
-				{
-					scalar_literal_cast(value_literal, 0, pass->blend_op);
-				}
-				else if (passstate == "BlendOpAlpha")
-				{
-					scalar_literal_cast(value_literal, 0, pass->blend_op_alpha);
-				}
-				else if (passstate == "SrcBlend")
-				{
-					scalar_literal_cast(value_literal, 0, pass->src_blend);
-				}
-				else if (passstate == "SrcBlendAlpha")
-				{
-					scalar_literal_cast(value_literal, 0, pass->src_blend_alpha);
-				}
-				else if (passstate == "DestBlend")
-				{
-					scalar_literal_cast(value_literal, 0, pass->dest_blend);
-				}
-				else if (passstate == "DestBlend")
-				{
-					scalar_literal_cast(value_literal, 0, pass->dest_blend_alpha);
-				}
-				else if (passstate == "StencilFunc")
-				{
-					scalar_literal_cast(value_literal, 0, pass->stencil_comparison_func);
-				}
-				else if (passstate == "StencilRef")
-				{
-					scalar_literal_cast(value_literal, 0, pass->stencil_reference_value);
-				}
-				else if (passstate == "StencilPass" || passstate == "StencilPassOp")
-				{
-					scalar_literal_cast(value_literal, 0, pass->stencil_op_pass);
-				}
-				else if (passstate == "StencilFail" || passstate == "StencilFailOp")
-				{
-					scalar_literal_cast(value_literal, 0, pass->stencil_op_fail);
-				}
-				else if (passstate == "StencilZFail" || passstate == "StencilDepthFail" || passstate == "StencilDepthFailOp")
-				{
-					scalar_literal_cast(value_literal, 0, pass->stencil_op_depth_fail);
-				}
-				else
-				{
-					error(location, 3004, "unrecognized pass state '" + passstate + "'");
-
-					return false;
-				}
-			}
-		}
-
-		return expect('}');
-	}
-	bool parser::parse_technique_pass_expression(expression_node *&expression)
+	bool parser::parse_technique_pass_expression(spv::Id &expression)
 	{
 		scope scope;
 		bool exclusive;
@@ -3629,40 +3902,40 @@ namespace reshadefx
 		if (exclusive ? expect(tokenid::identifier) : accept(tokenid::identifier))
 		{
 			const std::pair<const char *, unsigned int> s_enums[] = {
-				{ "NONE", pass_declaration_node::NONE },
-				{ "ZERO", pass_declaration_node::ZERO },
-				{ "ONE", pass_declaration_node::ONE },
-				{ "SRCCOLOR", pass_declaration_node::SRCCOLOR },
-				{ "SRCALPHA", pass_declaration_node::SRCALPHA },
-				{ "INVSRCCOLOR", pass_declaration_node::INVSRCCOLOR },
-				{ "INVSRCALPHA", pass_declaration_node::INVSRCALPHA },
-				{ "DESTCOLOR", pass_declaration_node::DESTCOLOR },
-				{ "DESTALPHA", pass_declaration_node::DESTALPHA },
-				{ "INVDESTCOLOR", pass_declaration_node::INVDESTCOLOR },
-				{ "INVDESTALPHA", pass_declaration_node::INVDESTALPHA },
-				{ "ADD", pass_declaration_node::ADD },
-				{ "SUBTRACT", pass_declaration_node::SUBTRACT },
-				{ "REVSUBTRACT", pass_declaration_node::REVSUBTRACT },
-				{ "MIN", pass_declaration_node::MIN },
-				{ "MAX", pass_declaration_node::MAX },
-				{ "KEEP", pass_declaration_node::KEEP },
-				{ "REPLACE", pass_declaration_node::REPLACE },
-				{ "INVERT", pass_declaration_node::INVERT },
-				{ "INCR", pass_declaration_node::INCR },
-				{ "INCRSAT", pass_declaration_node::INCRSAT },
-				{ "DECR", pass_declaration_node::DECR },
-				{ "DECRSAT", pass_declaration_node::DECRSAT },
-				{ "NEVER", pass_declaration_node::NEVER },
-				{ "ALWAYS", pass_declaration_node::ALWAYS },
-				{ "LESS", pass_declaration_node::LESS },
-				{ "GREATER", pass_declaration_node::GREATER },
-				{ "LEQUAL", pass_declaration_node::LESSEQUAL },
-				{ "LESSEQUAL", pass_declaration_node::LESSEQUAL },
-				{ "GEQUAL", pass_declaration_node::GREATEREQUAL },
-				{ "GREATEREQUAL", pass_declaration_node::GREATEREQUAL },
-				{ "EQUAL", pass_declaration_node::EQUAL },
-				{ "NEQUAL", pass_declaration_node::NOTEQUAL },
-				{ "NOTEQUAL", pass_declaration_node::NOTEQUAL },
+				{ "NONE", pass_properties::NONE },
+				{ "ZERO", pass_properties::ZERO },
+				{ "ONE", pass_properties::ONE },
+				{ "SRCCOLOR", pass_properties::SRCCOLOR },
+				{ "SRCALPHA", pass_properties::SRCALPHA },
+				{ "INVSRCCOLOR", pass_properties::INVSRCCOLOR },
+				{ "INVSRCALPHA", pass_properties::INVSRCALPHA },
+				{ "DESTCOLOR", pass_properties::DESTCOLOR },
+				{ "DESTALPHA", pass_properties::DESTALPHA },
+				{ "INVDESTCOLOR", pass_properties::INVDESTCOLOR },
+				{ "INVDESTALPHA", pass_properties::INVDESTALPHA },
+				{ "ADD", pass_properties::ADD },
+				{ "SUBTRACT", pass_properties::SUBTRACT },
+				{ "REVSUBTRACT", pass_properties::REVSUBTRACT },
+				{ "MIN", pass_properties::MIN },
+				{ "MAX", pass_properties::MAX },
+				{ "KEEP", pass_properties::KEEP },
+				{ "REPLACE", pass_properties::REPLACE },
+				{ "INVERT", pass_properties::INVERT },
+				{ "INCR", pass_properties::INCR },
+				{ "INCRSAT", pass_properties::INCRSAT },
+				{ "DECR", pass_properties::DECR },
+				{ "DECRSAT", pass_properties::DECRSAT },
+				{ "NEVER", pass_properties::NEVER },
+				{ "ALWAYS", pass_properties::ALWAYS },
+				{ "LESS", pass_properties::LESS },
+				{ "GREATER", pass_properties::GREATER },
+				{ "LEQUAL", pass_properties::LESSEQUAL },
+				{ "LESSEQUAL", pass_properties::LESSEQUAL },
+				{ "GEQUAL", pass_properties::GREATEREQUAL },
+				{ "GREATEREQUAL", pass_properties::GREATEREQUAL },
+				{ "EQUAL", pass_properties::EQUAL },
+				{ "NEQUAL", pass_properties::NOTEQUAL },
+				{ "NOTEQUAL", pass_properties::NOTEQUAL },
 			};
 
 			auto identifier = _token.literal_as_string;
@@ -3673,12 +3946,13 @@ namespace reshadefx
 			{
 				if (value.first == _token.literal_as_string)
 				{
-					const auto newexpression = _ast.make_node<literal_expression_node>(location);
-					newexpression->type.basetype = type_node::datatype_uint;
-					newexpression->type.rows = newexpression->type.cols = 1, newexpression->type.array_length = 0;
-					newexpression->value_uint[0] = value.second;
+					auto &newexpression = add_node(_temporary, location, spv::OpConstant, type_uint);
+					newexpression.add(value.second);
 
-					expression = newexpression;
+					newexpression.type.basetype = type_node::datatype_uint;
+					newexpression.type.rows = newexpression.type.cols = 1, newexpression.type.array_length = 0;
+
+					expression = newexpression.result;
 
 					return true;
 				}
@@ -3691,22 +3965,18 @@ namespace reshadefx
 
 			const auto symbol = _symbol_table->find(identifier, scope, exclusive);
 
-			if (symbol == nullptr)
+			if (!symbol)
 			{
 				error(location, 3004, "undeclared identifier '" + identifier + "'");
 
 				return false;
 			}
 
-			const auto newexpression = _ast.make_node<lvalue_expression_node>(location);
-			newexpression->reference = static_cast<const variable_declaration_node *>(symbol);
-			newexpression->type = symbol->id == nodeid::function_declaration ? static_cast<const function_declaration_node *>(symbol)->return_type : newexpression->reference->type;
-
-			expression = newexpression;
+			expression = symbol;
 
 			return true;
 		}
 
-		return parse_expression_multary(expression);
+		return parse_expression_multary(_temporary, expression);
 	}
 }
