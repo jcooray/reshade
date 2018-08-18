@@ -891,12 +891,13 @@ namespace reshadefx
 
 	bool parser::parse_expression(spv_section &section, spv::Id &node_id, type_info &type)
 	{
+		// Parse first expression
 		if (!parse_expression_assignment(section, node_id, type))
 			return false;
 
 		// Continue parsing if an expression sequence is next
-		// Overwrite the node and type since the last expression is the result
 		while (accept(','))
+			// Overwrite the node and type since the last expression in the sequence is the result
 			if (!parse_expression_assignment(section, node_id, type))
 				return false;
 
@@ -907,25 +908,47 @@ namespace reshadefx
 		auto location = _token_next.location;
 
 		#pragma region Prefix
+		// Check if a prefix operator exists
 		if (spv::Op op; accept_unary_op(op))
 		{
+			// Parse the actual expression
 			if (!parse_expression_unary(section, node_id, type))
 				return false;
 
+			// Unary operators are only valid on basic types
 			if (!type.is_scalar() && !type.is_vector() && !type.is_matrix())
 			{
 				error(lookup_id(node_id).location, 3022, "scalar, vector, or matrix expected");
 				return false;
 			}
 
+			// Ignore "+" operator since it does not actually do anything
 			if (op != spv::OpNop)
 			{
+				// The "~" bitwise operator is only valid on integral types
 				if (op == spv::OpNot && !type.is_integral())
 				{
 					error(lookup_id(node_id).location, 3082, "int or unsigned int type required");
 					return false;
 				}
 
+				if (type.is_integral())
+				{
+					switch (op)
+					{
+					case spv::OpFNegate:
+						op = type.is_signed ? spv::OpSNegate : spv::OpBitReverse;
+						break;
+					case spv::OpFAdd:
+						op = spv::OpIAdd;
+						break;
+					case spv::OpFSub:
+						op = spv::OpISub;
+						break;
+					}
+				}
+
+				// Load the right hand side value if it was not yet resolved at this point
 				spv::Id pointer_id = node_id;
 
 				if (type.is_pointer)
@@ -941,7 +964,9 @@ namespace reshadefx
 				lookup_id(new_node)
 					.add(node_id);
 
-				if (op == spv::OpFAdd || op == spv::OpFSub)
+				// Special handling for the "++" and "--" operators
+				if (op == spv::OpFAdd || op == spv::OpFSub ||
+					op == spv::OpIAdd || op == spv::OpISub)
 				{
 					if (type.has(qualifier_const) || type.has(qualifier_uniform))
 					{
@@ -949,6 +974,7 @@ namespace reshadefx
 						return false;
 					}
 
+					// Create a constant one in the type of the expression
 					spv::Id constant_id = convert_constant(type, 1u);
 
 					lookup_id(new_node)
@@ -967,14 +993,17 @@ namespace reshadefx
 		{
 			backup();
 
+			// Check if this is a C-style cast expression
 			if (accept_type_class(type))
 			{
 				if (peek('('))
 				{
+					// This is not a C-style cast but a constructor call, so need to roll-back and parse that instead
 					restore();
 				}
 				else if (expect(')'))
 				{
+					// Parse expression behind cast operator
 					type_info rtype;
 
 					if (!parse_expression_unary(section, node_id, rtype))
@@ -982,9 +1011,10 @@ namespace reshadefx
 
 					if (rtype.base == type.base && (rtype.rows == type.rows && rtype.cols == type.cols) && !(rtype.is_array() || type.is_array()))
 					{
+						// The type already matches, so there is nothing to do
 						return true;
 					}
-					else if (rtype.is_numeric() && type.is_numeric())
+					else if (rtype.is_numeric() && type.is_numeric()) // Can only cast between numeric types
 					{
 						if ((rtype.rows < type.rows || rtype.cols < type.cols) && !rtype.is_scalar())
 						{
@@ -992,11 +1022,12 @@ namespace reshadefx
 							return false;
 						}
 
-						spv::Id pointer_id = node_id;
-
+						// Load the right hand side value if it was not yet resolved at this point
 						if (rtype.is_pointer)
 						{
 							rtype.is_pointer = false;
+
+							spv::Id pointer_id = node_id;
 
 							node_id = add_node(section, location, spv::OpLoad, convert_type(rtype));
 							lookup_id(node_id)
@@ -1005,24 +1036,14 @@ namespace reshadefx
 
 						if (rtype.rows > type.rows || rtype.cols > type.cols)
 						{
+							// Show a warning if this truncates the vector, the better alternative would be the use of swizzles
 							warning(location, 3206, "implicit truncation of vector type");
 
 							// TODO
-							return false;
 						}
-						else
-						{
-							// TODO
-							const spv::Op op = type.is_floating_point() ?
-								spv::OpConvertSToF :
-								spv::OpConvertFToS;
 
-							spv::Id new_node = add_node(section, location, op, convert_type(type));
-							lookup_id(new_node)
-								.add(node_id);
-
-							node_id = new_node;
-						}
+						// Add the base type cast node
+						node_id = add_cast_node(section, location, rtype, type, node_id);
 
 						return true;
 					}
@@ -1034,14 +1055,13 @@ namespace reshadefx
 				}
 				else
 				{
+					// Type name was not followed by a closing parenthesis
 					return false;
 				}
 			}
 
-			if (!parse_expression(section, node_id, type))
-				return false;
-
-			if (!expect(')'))
+			// Parse expression between the parentheses
+			if (!parse_expression(section, node_id, type) || !expect(')'))
 				return false;
 		}
 		else if (accept(tokenid::true_literal))
@@ -1093,10 +1113,9 @@ namespace reshadefx
 		{
 			std::string value = _token.literal_as_string;
 
+			// Multiple string literals in sequence are concatenated into a single string literal
 			while (accept(tokenid::string_literal))
-			{
 				value += _token.literal_as_string;
-			}
 
 			type = { spv::OpString, 0, 0, 0, false, false, qualifier_const };
 
@@ -1104,7 +1123,7 @@ namespace reshadefx
 			lookup_id(node_id)
 				.add_string(value.c_str());
 		}
-		else if (accept_type_class(type))
+		else if (accept_type_class(type)) // Check if this is a constructor call expression
 		{
 			if (!expect('('))
 				return false;
@@ -1115,39 +1134,44 @@ namespace reshadefx
 				return false;
 			}
 
+			// Empty constructors do not exist
 			if (accept(')'))
 			{
 				error(location, 3014, "incorrect number of arguments to numeric-type constructor");
 				return false;
 			}
 
+			// Parse entire argument expression list
 			unsigned int num_elements = 0;
 			std::vector<spv::Id> arguments;
 
 			while (!peek(')'))
 			{
+				// There should be a comma between arguments
 				if (!arguments.empty() && !expect(','))
 					return false;
 
+				// Parse the argument expression
 				spv::Id arg_id = 0;
 				type_info arg_type;
 
 				if (!parse_expression_assignment(section, arg_id, arg_type))
 					return false;
 
+				// Constructors are only defined for numeric base types
 				if (!arg_type.is_numeric())
 				{
 					error(lookup_id(arg_id).location, 3017, "cannot convert non-numeric types");
 					return false;
 				}
 
+				// Perform an implicit conversion when base types do not match
 				if (arg_type.base != type.base)
 				{
 					type_info target_type = type;
 					target_type.rows = arg_type.rows;
 					target_type.cols = arg_type.cols;
 
-					// Do implicit conversion
 					arg_id = add_cast_node(section, lookup_id(arg_id).location, arg_type, target_type, arg_id);
 				}
 
@@ -1156,40 +1180,44 @@ namespace reshadefx
 				arguments.push_back(arg_id);
 			}
 
+			// The list should be terminated with a parenthesis
 			if (!expect(')'))
 				return false;
 
+			// The total number of argument elements needs to match the number of elements in the result type
 			if (num_elements != type.rows * type.cols)
 			{
 				error(location, 3014, "incorrect number of arguments to numeric-type constructor");
 				return false;
 			}
 
+			// Result is a r-value and therefore not modifiable
+			type.qualifiers = qualifier_const;
+
 			if (arguments.size() > 1)
 			{
-				type.qualifiers = qualifier_const;
-
 				node_id = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
 
 				for (size_t i = 0; i < arguments.size(); ++i)
 					lookup_id(node_id).add(arguments[i]);
 			}
-			else
+			else // A constructor call with a single argument is identical to a cast
 			{
-				node_id = arguments[0];
+				node_id = arguments[0]; // Casting already happened in the loop above
 			}
 		}
-		else
+		else // At this point only identifiers are left to check and resolve
 		{
 			scope scope;
 			bool exclusive;
 			std::string identifier;
 
+			// Starting an identifier with '::' restricts the symbol search to the global namespace level
 			if (accept(tokenid::colon_colon))
 			{
 				scope.name = "::";
 				scope.namespace_level = scope.level = 0;
-				exclusive = true;
+				exclusive = true; // Do not search in other namespace levels
 			}
 			else
 			{
@@ -1198,80 +1226,91 @@ namespace reshadefx
 			}
 
 			if (exclusive ? expect(tokenid::identifier) : accept(tokenid::identifier))
-			{
 				identifier = _token.literal_as_string;
-			}
 			else
-			{
 				return false;
-			}
 
+			// Can concatenate multiple '::' to force symbol search for a specific namespace level
 			while (accept(tokenid::colon_colon))
 			{
 				if (!expect(tokenid::identifier))
 					return false;
-
 				identifier += "::" + _token.literal_as_string;
 			}
 
+			// Lookup name in the symbol table
 			symbol symbol = _symbol_table->find(identifier, scope, exclusive);
 
+			// Check if this is a function call or variable reference
 			if (accept('('))
 			{
+				// Can only call symbols that are functions, but do not abort yet if no symbol was found since the identifier may reference an intrinsic
 				if (symbol.id && symbol.op != spv::OpFunction)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a variable, not a function");
-
 					return false;
 				}
 
-				std::vector<spv::Id> args;
+				// Parse entire argument expression list
+				std::vector<spv::Id> arguments;
 				std::vector<type_info> argtypes;
 
 				while (!peek(')'))
 				{
-					if (!args.empty() && !expect(','))
+					// There should be a comma between arguments
+					if (!arguments.empty() && !expect(','))
 						return false;
 
+					// Parse the argument expression
 					spv::Id arg_id = 0;
 					type_info arg_type;
 
 					if (!parse_expression_assignment(section, arg_id, arg_type))
 						return false;
 
-					args.push_back(std::move(arg_id));
+					arguments.push_back(std::move(arg_id));
 					argtypes.push_back(std::move(arg_type));
 				}
 
+				// The list should be terminated with a parenthesis
 				if (!expect(')'))
-				{
 					return false;
-				}
 
+				// Try to resolve the call by searching through both function symbols and intrinsics
 				bool undeclared = !!symbol.id, ambiguous = false;
 
 				if (!_symbol_table->resolve_call(identifier, argtypes, scope, ambiguous, symbol))
 				{
 					if (undeclared && symbol.op == spv::OpFunctionCall)
-					{
 						error(location, 3004, "undeclared identifier '" + identifier + "'");
-					}
 					else if (ambiguous)
-					{
 						error(location, 3067, "ambiguous function call to '" + identifier + "'");
-					}
 					else
-					{
 						error(location, 3013, "no matching function overload for '" + identifier + "'");
-					}
-
 					return false;
 				}
 
+				// Result type is the return type of the function
 				type = symbol.type;
 
+				// Perform implicit type conversions for all arguments
+				for (size_t i = 0; i < argtypes.size(); ++i)
+				{
+					const auto &arg_type = argtypes[i];
+					const auto &param_type = static_cast<const function_info *>(symbol.info)->parameter_list[i];
+
+					if (arg_type.rows > param_type.rows || arg_type.cols > param_type.cols)
+					{
+						warning(lookup_id(arguments[i]).location, 3206, "implicit truncation of vector type");
+
+						// TODO
+					}
+				}
+
+				// Check if the call resolving found an intrinsic or function
 				if (symbol.op != spv::OpFunctionCall)
 				{
+					// This is an intrinsic, so add the appropriate operators
 					node_id = add_node(section, location, symbol.op, convert_type(type));
 
 					if (symbol.op == spv::OpExtInst)
@@ -1280,59 +1319,46 @@ namespace reshadefx
 						lookup_id(node_id).add(symbol.id);
 					}
 
-					for (size_t i = 0; i < args.size(); ++i)
-					{
-						lookup_id(node_id).add(args[i]);
-					}
+					for (size_t i = 0; i < arguments.size(); ++i)
+						lookup_id(node_id).add(arguments[i]);
 				}
 				else
 				{
-					const auto parent = _symbol_table->current_parent();
-
-					if (parent == symbol.id)
+					// It is not allowed to do recursive calls
+					if (_symbol_table->current_parent() == symbol.id)
 					{
 						error(location, 3500, "recursive function calls are not allowed");
-
 						return false;
 					}
 
+					// This is a function symbol, so add a call to it
 					node_id = add_node(section, location, spv::OpFunctionCall, convert_type(type));
 					lookup_id(node_id)
 						.add(symbol.id);
 
-					for (size_t i = 0; i < args.size(); ++i)
-					{
-						lookup_id(node_id).add(args[i]);
-					}
-				}
-
-				for (size_t i = 0; i < argtypes.size(); ++i)
-				{
-					const auto &arg_type = argtypes[i];
-					const auto &param_type = static_cast<const function_info *>(symbol.info)->parameter_list[i];
-
-					if (arg_type.rows > param_type.rows || arg_type.cols > param_type.cols)
-					{
-						warning(lookup_id(args[i]).location, 3206, "implicit truncation of vector type");
-					}
+					for (size_t i = 0; i < arguments.size(); ++i)
+						lookup_id(node_id).add(arguments[i]);
 				}
 			}
 			else
 			{
+				// Show error if no symbol matching the identifier was found
 				if (!symbol.id)
 				{
 					error(location, 3004, "undeclared identifier '" + identifier + "'");
 					return false;
 				}
+				// Can only reference variables by name, functions need to be called
 				else if (symbol.op != spv::OpVariable)
 				{
 					error(location, 3005, "identifier '" + identifier + "' represents a function, not a variable");
 					return false;
 				}
 
+				// Simply return the pointer to the variable, dereferencing is done on site where necessary
 				type = symbol.type;
 
-				assert(type.is_pointer);
+				assert(type.is_pointer); // Variable symbols should always be pointers
 
 				node_id = symbol.id;
 			}
@@ -1344,8 +1370,10 @@ namespace reshadefx
 		{
 			location = _token_next.location;
 
+			// Check if a postfix operator exists
 			if (spv::Op op; accept_postfix_op(op))
 			{
+				// Unary operators are only valid on basic types
 				if (!type.is_scalar() && !type.is_vector() && !type.is_matrix())
 				{
 					error(lookup_id(node_id).location, 3022, "scalar, vector, or matrix expected");
@@ -1358,10 +1386,25 @@ namespace reshadefx
 					return false;
 				}
 
-				spv::Id pointer_id = node_id;
+				if (type.is_integral())
+				{
+					switch (op)
+					{
+					case spv::OpFAdd:
+						op = spv::OpIAdd;
+						break;
+					case spv::OpFSub:
+						op = spv::OpISub;
+						break;
+					}
+				}
 
+				// At this point the expression should always be a pointer to a variable
 				assert(type.is_pointer);
-				type.is_pointer = false;
+
+				type.is_pointer = false; // Remove pointer flag since the following expressions operate on the underlying type
+
+				spv::Id pointer_id = node_id;
 
 				node_id = add_node(section, location, spv::OpLoad, convert_type(type));
 				lookup_id(node_id)
@@ -1369,6 +1412,7 @@ namespace reshadefx
 
 				type.qualifiers = qualifier_const;
 
+				// Create a constant one in the type of the expression
 				spv::Id constant_id = convert_constant(type, 1u);
 
 				spv::Id new_node = add_node(section, location, op, convert_type(type));
@@ -1376,7 +1420,7 @@ namespace reshadefx
 					.add(node_id)
 					.add(constant_id); // TODO
 
-					// The "++" and "--" operands modify the source variable, so store result back into it
+				// The "++" and "--" operands modify the source variable, so store result back into it
 				add_node_without_result(section, location, spv::OpStore)
 					.add(pointer_id) // Pointer
 					.add(node_id); // Object
@@ -1391,7 +1435,7 @@ namespace reshadefx
 				location = _token.location;
 				const auto subscript = _token.literal_as_string;
 
-				if (accept('('))
+				if (accept('(')) // Methods (function calls on types) are not supported
 				{
 					if (!type.is_struct() || type.is_array())
 						error(location, 3087, "object does not have methods");
@@ -1399,7 +1443,7 @@ namespace reshadefx
 						error(location, 3088, "structures do not have methods");
 					return false;
 				}
-				else if (type.is_array())
+				else if (type.is_array()) // Arrays do not have subscripts
 				{
 					error(location, 3018, "invalid subscript on array");
 					return false;
@@ -1468,15 +1512,25 @@ namespace reshadefx
 						type.qualifiers &= ~qualifier_uniform;
 					}
 
-					spv::Id new_node = add_node(section, location, spv::OpVectorShuffle, convert_type(type));
-					lookup_id(new_node)
-						.add(node_id) // Vector 1
-						.add(node_id); // Vector 2
-
-					for (size_t i = 0; i < length && offsets[i] >= 0; ++i)
+					if (type.is_pointer)
 					{
+						spv::Id new_node = add_node(section, location, spv::OpAccessChain, convert_type(type));
 						lookup_id(new_node)
-							.add(offsets[i]);
+							.add(node_id) // Base
+							.add(node_id); // Indexes
+					}
+					else
+					{
+						spv::Id new_node = add_node(section, location, spv::OpVectorShuffle, convert_type(type));
+						lookup_id(new_node)
+							.add(node_id) // Vector 1
+							.add(node_id); // Vector 2
+
+						for (size_t i = 0; i < length && offsets[i] >= 0; ++i)
+						{
+							lookup_id(new_node)
+								.add(offsets[i]);
+						}
 					}
 				}
 				else if (type.is_matrix())
@@ -1592,6 +1646,12 @@ namespace reshadefx
 				{
 					const size_t length = subscript.size();
 
+					if (length > 4)
+					{
+						error(location, 3018, "invalid subscript '" + subscript + "', swizzle too long");
+						return false;
+					}
+
 					type.qualifiers |= qualifier_const;
 					type.rows = static_cast<unsigned int>(length);
 
@@ -1625,6 +1685,7 @@ namespace reshadefx
 					return false;
 				}
 
+				// Parse index expression
 				spv::Id index_id = 0;
 				type_info index_type;
 
@@ -1674,33 +1735,59 @@ namespace reshadefx
 	}
 	bool parser::parse_expression_multary(spv_section &section, spv::Id &node_id, type_info &type, unsigned int left_precedence)
 	{
+		// Parse left hand side of the expression
 		if (!parse_expression_unary(section, node_id, type))
 			return false;
 
+		// Check if an operator exists so that this is a binary or ternary expression
 		spv::Op op;
 		unsigned int right_precedence;
 
 		while (peek_multary_op(op, right_precedence))
 		{
+			// Only process this operator if it has a lower precedence than the current operation, otherwise leave it for later and abort
 			if (right_precedence <= left_precedence)
 				break;
 
+			// Finally consume the operator token
 			consume();
 
-			bool boolean = false;
 			spv::Id left_id = node_id;
 			spv::Id right_id = 0;
-			type_info ltype = type, rtype;
+			type_info ltype = type;
+			type_info rtype;
 
+			// Check if this is a binary or ternary operation
 			if (op != spv::OpSelect)
 			{
+				// Parse the right hand side of the binary operation
 				if (!parse_expression_multary(section, right_id, rtype, right_precedence))
 					return false;
 
+				// Deduce the result base type based on implicit conversion rules
+				type = { std::max(ltype.base, rtype.base), std::max(ltype.size, rtype.size), 1, 1, ltype.is_signed }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
+
+				// Do some error checking depending on the operator
 				if (op == spv::OpFOrdEqual || op == spv::OpFOrdNotEqual)
 				{
-					boolean = true;
+					// Select operator matching the argument types
+					if (type.is_integral())
+					{
+						switch (op)
+						{
+						case spv::OpFOrdEqual:
+							op = spv::OpIEqual;
+							break;
+						case spv::OpFOrdNotEqual:
+							op = spv::OpINotEqual;
+							break;
+						}
+					}
 
+					// Equality checks return a boolean value
+					type.base = spv::OpTypeBool;
+
+					// Cannot check equality between incompatible types
 					if (ltype.is_array() || rtype.is_array() || ltype.definition != rtype.definition)
 					{
 						error(lookup_id(right_id).location, 3020, "type mismatch");
@@ -1709,6 +1796,7 @@ namespace reshadefx
 				}
 				else if (op == spv::OpBitwiseAnd || op == spv::OpBitwiseOr || op == spv::OpBitwiseXor)
 				{
+					// Cannot perform bitwise operations on non-integral types
 					if (!ltype.is_integral())
 					{
 						error(lookup_id(left_id).location, 3082, "int or unsigned int type required");
@@ -1722,10 +1810,48 @@ namespace reshadefx
 				}
 				else
 				{
-					boolean = op == spv::OpLogicalAnd || op == spv::OpLogicalOr ||
-						op == spv::OpFOrdLessThan || op == spv::OpFOrdGreaterThan ||
-						op == spv::OpFOrdLessThanEqual || op == spv::OpFOrdGreaterThanEqual;
+					// Select operator matching the argument types
+					if (type.is_integral())
+					{
+						switch (op)
+						{
+						case spv::OpFMod:
+							op = type.is_signed ? spv::OpSMod : spv::OpUMod;
+							break;
+						case spv::OpFMul:
+							op = spv::OpIMul;
+							break;
+						case spv::OpFAdd:
+							op = spv::OpIAdd;
+							break;
+						case spv::OpFSub:
+							op = spv::OpISub;
+							break;
+						case spv::OpFDiv:
+							op = type.is_signed ? spv::OpSDiv : spv::OpUDiv;
+							break;
+						case spv::OpFOrdLessThan:
+							op = type.is_signed ? spv::OpSLessThan : spv::OpULessThan;
+							break;
+						case spv::OpFOrdGreaterThan:
+							op = type.is_signed ? spv::OpSGreaterThan : spv::OpUGreaterThan;
+							break;
+						case spv::OpFOrdLessThanEqual:
+							op = type.is_signed ? spv::OpSLessThanEqual : spv::OpULessThanEqual;
+							break;
+						case spv::OpFOrdGreaterThanEqual:
+							op = type.is_signed ? spv::OpSGreaterThanEqual : spv::OpUGreaterThanEqual;
+							break;
+						}
+					}
 
+					// Logical operations return a boolean value
+					if (op == spv::OpLogicalAnd || op == spv::OpLogicalOr ||
+						op == spv::OpFOrdLessThan || op == spv::OpFOrdGreaterThan ||
+						op == spv::OpFOrdLessThanEqual || op == spv::OpFOrdGreaterThanEqual)
+						type.base = spv::OpTypeBool;
+
+					// Cannot perform arithmetic operations on non-basic types
 					if (!ltype.is_scalar() && !ltype.is_vector() && !ltype.is_matrix())
 					{
 						error(lookup_id(left_id).location, 3022, "scalar, vector, or matrix expected");
@@ -1738,53 +1864,95 @@ namespace reshadefx
 					}
 				}
 
-				type = { boolean ? spv::OpTypeBool : std::max(ltype.base, rtype.base) }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
+				// Load the values if they was not yet resolved at this point
+				if (ltype.is_pointer)
+				{
+					ltype.is_pointer = false;
+					spv::Id pointer_id = left_id;
+					left_id = add_node(section, lookup_id(left_id).location, spv::OpLoad, convert_type(ltype));
+					lookup_id(left_id)
+						.add(pointer_id);
+				}
+				if (rtype.is_pointer)
+				{
+					rtype.is_pointer = false;
+					spv::Id pointer_id = right_id;
+					right_id = add_node(section, lookup_id(right_id).location, spv::OpLoad, convert_type(rtype));
+					lookup_id(right_id)
+						.add(pointer_id);
+				}
 
-				if (type.base != ltype.base)
-					left_id = add_cast_node(section, lookup_id(left_id).location, ltype, type, left_id);
-				if (type.base != rtype.base)
-					right_id = add_cast_node(section, lookup_id(right_id).location, rtype, type, right_id);
-
+				// If one side of the expression is scalar need to promote it to the same dimension as the other side
 				if ((ltype.rows == 1 && ltype.cols == 1) || (rtype.rows == 1 && rtype.cols == 1))
 				{
 					type.rows = std::max(ltype.rows, rtype.rows);
 					type.cols = std::max(ltype.cols, rtype.cols);
 
-					if (ltype.rows > 1 || ltype.cols > 1)
-					{
-						spv::Id composite_node = add_node(section, lookup_id(left_id).location, spv::OpCompositeConstruct, convert_type(type));
-
-						for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
-							lookup_id(composite_node)
-								.add(left_id);
-
-						left_id = composite_node;
-					}
+					// Check if the left hand side needs to be promoted
 					if (rtype.rows > 1 || rtype.cols > 1)
 					{
-						spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(type));
-
-						for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
-							lookup_id(composite_node)
-								.add(right_id);
-
+						auto composide_type = type;
+						composide_type.base = ltype.base;
+						spv::Id composite_node = add_node(section, lookup_id(left_id).location, spv::OpCompositeConstruct, convert_type(composide_type));
+						for (unsigned int i = 0; i < type.rows * type.cols; ++i)
+							lookup_id(composite_node).add(left_id);
+						left_id = composite_node;
+					}
+					// Check if the right hand side needs to be promoted
+					else if (ltype.rows > 1 || ltype.cols > 1)
+					{
+						auto composide_type = type;
+						composide_type.base = rtype.base;
+						spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(composide_type));
+						for (unsigned int i = 0; i < type.rows * type.cols; ++i)
+							lookup_id(composite_node).add(right_id);
 						right_id = composite_node;
 					}
 				}
-				else
+				else // Otherwise dimensions match or one side is truncated to match the other one
 				{
 					type.rows = std::min(ltype.rows, rtype.rows);
 					type.cols = std::min(ltype.cols, rtype.cols);
 
+					// Check if the left hand side needs to be truncated
 					if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
 					{
 						warning(lookup_id(left_id).location, 3206, "implicit truncation of vector type");
+
+						// TODO: Matrix?
+						auto trunction_type = type;
+						trunction_type.base = ltype.base;
+						spv::Id trunction_node = add_node(section, lookup_id(left_id).location, spv::OpVectorShuffle, convert_type(trunction_type));
+						lookup_id(trunction_node)
+							.add(left_id) // Vector 1
+							.add(left_id); // Vector 2
+						for (unsigned int i = 0; i < type.rows; ++i)
+							lookup_id(trunction_node).add(i);
+						left_id = trunction_node;
 					}
-					if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+					// Check if the right hand side needs to be truncated
+					else if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
 					{
 						warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
+
+						// TODO: Matrix?
+						auto trunction_type = type;
+						trunction_type.base = rtype.base;
+						spv::Id trunction_node = add_node(section, lookup_id(left_id).location, spv::OpVectorShuffle, convert_type(trunction_type));
+						lookup_id(trunction_node)
+							.add(right_id) // Vector 1
+							.add(right_id); // Vector 2
+						for (unsigned int i = 0; i < type.rows; ++i)
+							lookup_id(trunction_node).add(i);
+						right_id = trunction_node;
 					}
 				}
+
+				// Now that the dimensions match, convert to result base type if there is a mismatch
+				if (type.base != ltype.base)
+					left_id = add_cast_node(section, lookup_id(left_id).location, ltype, type, left_id);
+				if (type.base != rtype.base)
+					right_id = add_cast_node(section, lookup_id(right_id).location, rtype, type, right_id);
 
 				spv::Id new_node = add_node(section, lookup_id(left_id).location, op, convert_type(type));
 				lookup_id(new_node)
@@ -1795,42 +1963,141 @@ namespace reshadefx
 			}
 			else
 			{
-				if (!ltype.is_scalar() && !ltype.is_vector())
+				// A conditional expression needs a scalar or vector type condition
+				if (!type.is_scalar() && !type.is_vector())
 				{
 					error(lookup_id(node_id).location, 3022, "boolean or vector expression expected");
 					return false;
 				}
 
+				if (type.is_pointer)
+				{
+					type.is_pointer = false;
+					spv::Id pointer_id = node_id;
+					node_id = add_node(section, lookup_id(node_id).location, spv::OpLoad, convert_type(type));
+					lookup_id(node_id)
+						.add(pointer_id);
+				}
+
+				// Convert condition expression to boolean type
+				if (type.is_boolean())
+				{
+					node_id = add_cast_node(section, lookup_id(node_id).location, ltype, { spv::OpTypeBool, 32, type.rows, 1 }, node_id);
+
+					type.base = spv::OpTypeBool;
+				}
+
+				// Parse the right hand side of the ternary operation
 				if (!(parse_expression(section, left_id, ltype) && expect(':') && parse_expression_assignment(section, right_id, rtype)))
 					return false;
 
+				// Check that the condition dimension matches that of at least one side
+				if (type.is_vector() && type.rows != ltype.rows && type.cols != ltype.cols)
+				{
+					error(lookup_id(node_id).location, 3020, "dimension of conditional does not match value");
+					return false;
+				}
+
+				// Check that the two value expressions can be converted between each other
 				if (ltype.is_array() || rtype.is_array() || ltype.definition != rtype.definition)
 				{
 					error(lookup_id(node_id).location, 3020, "type mismatch between conditional values");
 					return false;
 				}
 
-				type = { std::max(ltype.base, rtype.base) }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
+				// Load the right hand side values if they were not yet resolved at this point
+				if (ltype.is_pointer)
+				{
+					ltype.is_pointer = false;
+					spv::Id pointer_id = left_id;
+					left_id = add_node(section, lookup_id(left_id).location, spv::OpLoad, convert_type(ltype));
+					lookup_id(left_id)
+						.add(pointer_id);
+				}
+				if (rtype.is_pointer)
+				{
+					rtype.is_pointer = false;
+					spv::Id pointer_id = right_id;
+					right_id = add_node(section, lookup_id(right_id).location, spv::OpLoad, convert_type(rtype));
+					lookup_id(right_id)
+						.add(pointer_id);
+				}
 
+				// Deduce the result base type based on implicit conversion rules
+				type = { std::max(ltype.base, rtype.base), std::max(ltype.size, rtype.size), 1, 1, ltype.is_signed && rtype.is_signed }; // This works because 'OpTypeFloat' is higher than 'OpTypeInt'
+
+				// If one side of the expression is scalar need to promote it to the same dimension as the other side
 				if ((ltype.rows == 1 && ltype.cols == 1) || (rtype.rows == 1 && rtype.cols == 1))
 				{
 					type.rows = std::max(ltype.rows, rtype.rows);
 					type.cols = std::max(ltype.cols, rtype.cols);
+
+					// Check if the left hand side needs to be promoted
+					if (rtype.rows > 1 || rtype.cols > 1)
+					{
+						auto composite_type = type;
+						composite_type.base = ltype.base;
+						spv::Id composite_node = add_node(section, lookup_id(left_id).location, spv::OpCompositeConstruct, convert_type(composite_type));
+						for (unsigned int i = 0; i < type.rows * type.cols; ++i)
+							lookup_id(composite_node).add(left_id);
+						left_id = composite_node;
+					}
+					// Check if the right hand side needs to be promoted
+					else if (ltype.rows > 1 || ltype.cols > 1)
+					{
+						auto composite_type = type;
+						composite_type.base = rtype.base;
+						spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(composite_type));
+						for (unsigned int i = 0; i < type.rows * type.cols; ++i)
+							lookup_id(composite_node).add(right_id);
+						right_id = composite_node;
+					}
 				}
-				else
+				else // Otherwise dimensions match or one side is truncated to match the other one
 				{
 					type.rows = std::min(ltype.rows, rtype.rows);
 					type.cols = std::min(ltype.cols, rtype.cols);
 
+					// Check if the left hand side needs to be truncated
 					if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
 					{
 						warning(lookup_id(left_id).location, 3206, "implicit truncation of vector type");
+
+						// TODO: Matrix?
+						auto trunction_type = type;
+						trunction_type.base = ltype.base;
+						spv::Id trunction_node = add_node(section, lookup_id(left_id).location, spv::OpVectorShuffle, convert_type(trunction_type));
+						lookup_id(trunction_node)
+							.add(left_id) // Vector 1
+							.add(left_id); // Vector 2
+						for (unsigned int i = 0; i < type.rows; ++i)
+							lookup_id(trunction_node).add(i);
+						left_id = trunction_node;
 					}
-					if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+					// Check if the right hand side needs to be truncated
+					else if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
 					{
 						warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
+
+						// TODO: Matrix?
+						auto trunction_type = type;
+						trunction_type.base = rtype.base;
+						spv::Id trunction_node = add_node(section, lookup_id(right_id).location, spv::OpVectorShuffle, convert_type(trunction_type));
+						lookup_id(trunction_node)
+							.add(right_id) // Vector 1
+							.add(right_id); // Vector 2
+						for (unsigned int i = 0; i < type.rows; ++i)
+							lookup_id(trunction_node)
+							.add(i);
+						right_id = trunction_node;
 					}
 				}
+
+				// Now that the dimensions match, convert to result base type if there is a mismatch
+				if (type.base != ltype.base)
+					left_id = add_cast_node(section, lookup_id(left_id).location, ltype, type, left_id);
+				if (type.base != rtype.base)
+					right_id = add_cast_node(section, lookup_id(right_id).location, rtype, type, right_id);
 
 				spv::Id new_node = add_node(section, lookup_id(node_id).location, spv::OpSelect, convert_type(type));
 				lookup_id(new_node)
@@ -1846,62 +2113,104 @@ namespace reshadefx
 	}
 	bool parser::parse_expression_assignment(spv_section &section, spv::Id &node_id, type_info &type)
 	{
+		// Parse left hand side of the expression
 		if (!parse_expression_multary(section, node_id, type))
 			return false;
 
+		// Check if an operator exists so that this is an assignment
 		if (spv::Op op; accept_assignment_op(op))
 		{
-			spv::Id right_id = 0;
-			type_info &ltype = type, rtype;
+			// Parse right hand side of the assignment expression
+			spv::Id right_id = 0; type_info rtype;
 
 			if (!parse_expression_multary(section, right_id, rtype))
 				return false;
 
-			if (ltype.has(qualifier_const) || ltype.has(qualifier_uniform))
+			// Cannot assign to constants and uniform variables
+			if (type.has(qualifier_const) || type.has(qualifier_uniform))
 			{
 				error(lookup_id(node_id).location, 3025, "l-value specifies const object");
 				return false;
 			}
 
-			if (ltype.is_array() || rtype.is_array() || !type_info::rank(ltype, rtype))
+			// Cannot assign between arrays and incompatible types
+			if (type.is_array() || rtype.is_array() || !type_info::rank(type, rtype))
 			{
 				error(lookup_id(right_id).location, 3020, "cannot convert these types");
 				return false;
 			}
 
-			if (ltype.rows > rtype.rows || ltype.cols > rtype.cols)
+			// At this point the left hand side should always be a pointer to a variable
+			assert(type.is_pointer);
+
+			type.is_pointer = false; // Remove pointer flag since the following expressions operate on the underlying type
+
+			// Need to convert type if the left hand side is a larger composite
+			if (type.rows > rtype.rows || type.cols > rtype.cols)
 			{
-				rtype.rows = ltype.rows;
-				rtype.cols = ltype.cols;
+				rtype.rows = type.rows;
+				rtype.cols = type.cols;
 
-				spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(rtype));
-
-				for (unsigned int i = 0; i < ltype.rows * ltype.cols; ++i)
-					lookup_id(composite_node)
-					.add(right_id);
-
+				auto composite_type = rtype;
+				composite_type.base = rtype.base;
+				spv::Id composite_node = add_node(section, lookup_id(right_id).location, spv::OpCompositeConstruct, convert_type(composite_type));
+				for (unsigned int i = 0; i < type.rows * type.cols; ++i)
+					lookup_id(composite_node).add(right_id);
 				right_id = composite_node;
 			}
-			if (rtype.rows > ltype.rows || rtype.cols > ltype.cols)
+			// Need to truncate type if the right hand side is a larger composite
+			else if (rtype.rows > type.rows || rtype.cols > type.cols)
 			{
 				warning(lookup_id(right_id).location, 3206, "implicit truncation of vector type");
+
+				// TODO: Matrix?
+				auto trunction_type = type;
+				trunction_type.base = rtype.base;
+				spv::Id trunction_node = add_node(section, lookup_id(right_id).location, spv::OpVectorShuffle, convert_type(trunction_type));
+				lookup_id(trunction_node)
+					.add(right_id) // Vector 1
+					.add(right_id); // Vector 2
+				for (unsigned int i = 0; i < type.rows; ++i)
+					lookup_id(trunction_node).add(i);
+				right_id = trunction_node;
 			}
 
-			assert(ltype.is_pointer);
+			// Now that the dimensions match, convert to result base type if there is a mismatch
+			if (rtype.base != type.base)
+				right_id = add_cast_node(section, lookup_id(right_id).location, rtype, type, right_id);
 
-			ltype.is_pointer = false;
+			// Need to load the value from the variable to modify it
+			spv::Id left_id = add_node(section, lookup_id(node_id).location, spv::OpLoad, convert_type(type));
+			lookup_id(left_id)
+				.add(node_id);
 
-			if (rtype.base != ltype.base)
-			{
-				right_id = add_cast_node(section, lookup_id(right_id).location, rtype, ltype, right_id);
-			}
-
+			// Check if this is an assignment with an additional arithmetic instruction
 			if (op != spv::OpNop)
 			{
-				spv::Id left_id = add_node(section, lookup_id(node_id).location, spv::OpLoad, convert_type(ltype));
-				lookup_id(left_id)
-					.add(node_id);
+				// Select operator matching the argument types
+				if (type.is_integral())
+				{
+					switch (op)
+					{
+					case spv::OpFMod:
+						op = type.is_signed ? spv::OpSMod : spv::OpUMod;
+						break;
+					case spv::OpFMul:
+						op = spv::OpIMul;
+						break;
+					case spv::OpFAdd:
+						op = spv::OpIAdd;
+						break;
+					case spv::OpFSub:
+						op = spv::OpISub;
+						break;
+					case spv::OpFDiv:
+						op = type.is_signed ? spv::OpSDiv : spv::OpUDiv;
+						break;
+					}
+				}
 
+				// Load the right hand side value if it was not yet resolved at this point
 				if (rtype.is_pointer)
 				{
 					rtype.is_pointer = false;
@@ -1912,12 +2221,13 @@ namespace reshadefx
 						.add(pointer_id);
 				}
 
-				// Handle arithmetic assignment operator first
+				// Handle arithmetic assignment operation
 				spv::Id new_node = add_node(section, lookup_id(node_id).location, op, convert_type(type));
 				lookup_id(new_node)
 					.add(left_id)
 					.add(right_id);
 
+				// The result of the operation should now be stored in the variable
 				right_id = new_node;
 			}
 
@@ -1925,6 +2235,8 @@ namespace reshadefx
 			add_node_without_result(section, lookup_id(node_id).location, spv::OpStore)
 				.add(node_id)
 				.add(right_id);
+
+			node_id = left_id; // The result is the loaded value since you can write assignments within expressions
 		}
 
 		return true;
@@ -2328,7 +2640,7 @@ namespace reshadefx
 				}
 #endif
 
-				spv_node &node = add_node_without_result(section, location, spv::OpReturnValue)
+				add_node_without_result(section, location, spv::OpReturnValue)
 					.add(return_value);
 			}
 #if 0

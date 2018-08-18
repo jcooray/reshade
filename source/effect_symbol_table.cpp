@@ -351,6 +351,7 @@ bool reshadefx::symbol_table::resolve_call(const std::string &name, const std::v
 			{
 				out_data.op = intrinsic.op;
 				out_data.id = intrinsic.glsl;
+				out_data.info = &intrinsic.function;
 				out_data.type = intrinsic.function.return_type;
 				overload_props = &intrinsic.function;
 				overload_count = 1;
