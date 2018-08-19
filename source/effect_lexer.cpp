@@ -309,11 +309,13 @@ next_token:
 			break;
 		case '#':
 			if (is_at_line_begin)
+			{
 				if (!parse_pp_directive(tok) || _ignore_pp_directives)
 				{
 					skip_to_next_line();
 					goto next_token;
 				}
+			}
 			else
 				tok.id = tokenid::hash;
 			break;
@@ -537,6 +539,7 @@ void lexer::parse_identifier(token &tok) const
 	do end++; while (type_lookup[*end] == IDENT || type_lookup[*end] == DIGIT);
 
 	tok.id = tokenid::identifier;
+	tok.offset = begin - _input.data();
 	tok.length = end - begin;
 	tok.literal_as_string.assign(begin, end);
 
