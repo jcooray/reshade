@@ -600,10 +600,10 @@ namespace reshadefx
 			type.base = spv::OpString;
 			break;
 		case tokenid::texture:
-			type.base = spv::OpImage;
+			type.base = spv::OpTypeImage;
 			break;
 		case tokenid::sampler:
-			type.base = spv::OpSampledImage;
+			type.base = spv::OpTypeSampledImage;
 			break;
 		default:
 			return false;
@@ -2420,22 +2420,13 @@ namespace reshadefx
 	}
 	bool parser::parse_namespace()
 	{
-		if (!accept(tokenid::namespace_))
-		{
+		if (!accept(tokenid::namespace_) || !expect(tokenid::identifier))
 			return false;
-		}
-
-		if (!expect(tokenid::identifier))
-		{
-			return false;
-		}
 
 		const auto name = _token.literal_as_string;
 
 		if (!expect('{'))
-		{
 			return false;
-		}
 
 		_symbol_table->enter_namespace(name);
 
@@ -2498,32 +2489,24 @@ namespace reshadefx
 	bool parser::parse_annotations(std::unordered_map<std::string, reshade::variant> &annotations)
 	{
 		if (!accept('<'))
-		{
 			return true;
-		}
 
 		while (!peek('>'))
 		{
 			type_info type;
 
 			if (accept_type_class(type))
-			{
 				warning(_token.location, 4717, "type prefixes for annotations are deprecated");
-			}
 
 			if (!expect(tokenid::identifier))
-			{
 				return false;
-			}
 
 			const auto name = _token.literal_as_string;
 
 			access_chain exp;
 
 			if (!(expect('=') && parse_expression_unary(_temporary, exp) && expect(';')))
-			{
 				return false;
-			}
 
 			const auto &expression = lookup_id(exp.base);
 
@@ -3004,15 +2987,13 @@ namespace reshadefx
 
 		if (accept('='))
 		{
-			location = _token.location;
-
 			if (!parse_variable_assignment(section, initializer))
 			{
 				return false;
 			}
 
 			if (!parent && lookup_id(initializer.base).op != spv::OpConstant)
-				return error(location, 3011, "initial value must be a literal expression"), false;
+				return error(initializer.location, 3011, "initial value must be a literal expression"), false;
 
 #if 0 // TODO
 			if (variable->initializer_expression->id == nodeid::initializer_list && type.is_numeric())
@@ -3033,12 +3014,12 @@ namespace reshadefx
 #endif
 
 			if (!type_info::rank(initializer.type, type))
-				return error(location, 3017, "initial value does not match variable type"), false;
+				return error(initializer.location, 3017, "initial value does not match variable type"), false;
 			if ((initializer.type.rows < type.rows || initializer.type.cols < type.cols) && !initializer.type.is_scalar())
-				return error(location, 3017, "cannot implicitly convert these vector types"), false;
+				return error(initializer.location, 3017, "cannot implicitly convert these vector types"), false;
 
 			if (initializer.type.rows > type.rows || initializer.type.cols > type.cols)
-				warning(location, 3206, "implicit truncation of vector type");
+				warning(initializer.location, 3206, "implicit truncation of vector type");
 		}
 		else if (type.is_numeric())
 		{
