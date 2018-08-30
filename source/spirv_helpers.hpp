@@ -74,6 +74,7 @@ namespace reshadefx
 		unsigned int cols : 4;
 		unsigned int qualifiers = 0;
 		bool is_pointer = false;
+		bool has_semantic = false;
 		int array_length = 0;
 		spv::Id definition = 0;
 	};

@@ -752,6 +752,8 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			// There must be exactly one constituent for each top-level component of the result
 			if (type.is_matrix())
 			{
+				assert(type.rows == type.cols);
+
 				std::vector<spv::Id> ids;
 				ids.reserve(num_components);
 
@@ -762,19 +764,34 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 					{
 						spv_expression scalar = argument;
 						add_static_index_access(scalar, index);
+						spv_type scalar_type = scalar.type;
+						scalar_type.base = type.base;
+						add_cast_operation(scalar, scalar_type);
 						ids.push_back(access_chain_load(section, scalar));
 					}
 				}
 
 				// Second, turn that list of scalars into a list of column vectors
-				// TODO
-				assert(false);
+				for (size_t i = 0; i < ids.size(); i += type.rows)
+				{
+					spv_type vector_type = type;
+					vector_type.cols = 1;
+
+					spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(vector_type));
+
+					for (unsigned int k = 0; k < type.rows; ++k)
+						node.add(ids[i + k]);
+
+					ids[i] = node.result;
+				}
 
 				// Finally, construct a matrix from those column vectors
 				spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
 
-				for (size_t i = 0; i < ids.size(); ++i)
+				for (size_t i = 0; i < ids.size(); i += type.rows)
+				{
 					node.add(ids[i]);
+				}
 
 				exp.reset_to_rvalue(node.result, type, location);
 			}
@@ -890,7 +907,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			// We need to allocate some temporary variables to pass in and load results from pointer parameters
 			for (size_t i = 0; i < arguments.size(); ++i)
 			{
-				spv_type param_type = symbol.function->parameter_list[i].type;
+				const spv_type &param_type = symbol.function->parameter_list[i].type;
 
 				if (param_type.is_pointer)
 				{
@@ -2276,6 +2293,7 @@ bool reshadefx::parser::parse_struct()
 					return consume_until('}'), false;
 
 				member_info.builtin = semantic_to_builtin(_token.literal_as_string);
+				member_info.type.has_semantic = true;
 			}
 
 			// Add member type to list
@@ -2296,7 +2314,7 @@ bool reshadefx::parser::parse_struct()
 
 	_structs[info.definition] = info;
 
-	add_name(info.definition, info.name.c_str());
+	add_name(info.definition, info.unique_name.c_str());
 
 	for (uint32_t i = 0; i < info.member_list.size(); ++i)
 	{
@@ -2346,7 +2364,7 @@ bool reshadefx::parser::parse_function_declaration(spv_type &type, std::string n
 	// Add function instruction and insert the symbol into the symbol table
 	info.definition = define_function(location, type);
 
-	add_name(info.definition, name.c_str());
+	add_name(info.definition, info.unique_name.c_str());
 
 	const symbol symbol = { spv::OpFunction, info.definition, { spv_type::datatype_function }, &info };
 	insert_symbol(name, symbol, true);
@@ -2394,6 +2412,7 @@ bool reshadefx::parser::parse_function_declaration(spv_type &type, std::string n
 				return false;
 
 			param.builtin = semantic_to_builtin(_token.literal_as_string);
+			param.type.has_semantic = true;
 		}
 
 		param.type.is_pointer = true;
@@ -2477,6 +2496,16 @@ bool reshadefx::parser::parse_variable_declaration(spv_type &type, std::string n
 	spv_variable_info info;
 	info.name = name;
 
+	if (global)
+	{
+		info.unique_name = (type.has(spv_type::qualifier_uniform) ? 'U' : 'V') + current_scope().name + info.name;
+		std::replace(info.unique_name.begin(), info.unique_name.end(), ':', '_');
+	}
+	else
+	{
+		info.unique_name = name;
+	}
+
 	spv_expression initializer;
 
 	if (accept(':'))
@@ -2487,6 +2516,7 @@ bool reshadefx::parser::parse_variable_declaration(spv_type &type, std::string n
 			return error(_token.location, 3043, "local variables cannot have semantics"), false;
 
 		info.builtin = semantic_to_builtin(_token.literal_as_string);
+		type.has_semantic = true;
 	}
 	else
 	{
@@ -2582,7 +2612,7 @@ bool reshadefx::parser::parse_variable_declaration(spv_type &type, std::string n
 			type.is_pointer =  true;
 		}
 
-		add_name(info.definition, name.c_str());
+		add_name(info.definition, info.unique_name.c_str());
 
 		symbol = { spv::OpVariable, info.definition, type };
 	}
@@ -2782,9 +2812,13 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &pass)
 
 		if (state == "VertexShader" || state == "PixelShader")
 		{
+			const bool is_vs = state[0] == 'V';
+			const bool is_fs = !is_vs;
+
 			if (!value_exp.type.is_function())
 				return error(location, 3020, "type mismatch, expected function name"), false;
 
+			// Find the matching function info for this function definition
 			spv_function_info *info = nullptr;
 			for (auto &f : _functions)
 			{
@@ -2806,38 +2840,60 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &pass)
 
 			spv_basic_block &section = _functions2[_current_function].definition;
 
-			add_node(section, location, spv::OpFunctionCall, convert_type(info->return_type))
+			spv_instruction &call = add_node(section, location, spv::OpFunctionCall, convert_type(info->return_type))
 				.add(info->definition);
 			// TODO
+
+			const spv::Id call_result = call.result;
 
 			// Handle input parameters
 			for (const spv_struct_member_info &param : info->parameter_list)
 			{
-				if (param.type.has(spv_type::qualifier_in))
-				{
-					spv_type ptr_type = param.type; ptr_type.is_pointer = true;
-					spv::Id result = define_variable(location, ptr_type, spv::StorageClassInput);
-					if (param.builtin != spv::BuiltInMax)
-						add_builtin(result, param.builtin);
-					inputs_and_outputs.push_back(result);
-				}
+				spv::Id result = 0;
+
 				if (param.type.has(spv_type::qualifier_out))
 				{
 					spv_type ptr_type = param.type; ptr_type.is_pointer = true;
-					spv::Id result = define_variable(location, ptr_type, spv::StorageClassOutput);
+					result = define_variable(location, ptr_type, spv::StorageClassOutput);
+
 					if (param.builtin != spv::BuiltInMax)
 						add_builtin(result, param.builtin);
+
 					inputs_and_outputs.push_back(result);
 				}
+				else
+				{
+					spv_type ptr_type = param.type; ptr_type.is_pointer = true;
+
+					result = define_variable(location, ptr_type, spv::StorageClassInput);
+
+					if (is_fs && param.builtin == spv::BuiltInPosition)
+						add_builtin(result, spv::BuiltInFragCoord);
+					else if (param.builtin != spv::BuiltInMax)
+						add_builtin(result, param.builtin);
+
+					inputs_and_outputs.push_back(result);
+				}
+
+				call.add(result);
 			}
 
 			if (!info->return_type.is_void())
 			{
 				spv_type ptr_type = info->return_type; ptr_type.is_pointer = true;
+				ptr_type.qualifiers |= spv_type::qualifier_out; // Add out qualifier so the right storage class is appended to the pointer type
+				ptr_type.has_semantic = true;
+
 				spv::Id result = define_variable(location, ptr_type, spv::StorageClassOutput);
+
 				if (info->return_builtin != spv::BuiltInMax)
 					add_builtin(result, info->return_builtin);
+
 				inputs_and_outputs.push_back(result);
+
+				add_node_without_result(section, {}, spv::OpStore)
+					.add(result)
+					.add(call_result);
 			}
 
 			leave_block_and_return(section, 0);
