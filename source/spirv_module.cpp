@@ -113,28 +113,20 @@ spv_instruction &spirv_module::add_node_without_result(spv_basic_block &section,
 	return instruction;
 }
 
-spv::Id spirv_module::define_struct(const location &loc, const std::vector<spv::Id> &members)
+spv::Id spirv_module::define_struct(const char *name, const location &loc, const std::vector<spv::Id> &members)
 {
 	spv_instruction &node = add_node(_types, loc, spv::OpTypeStruct);
 	for (spv::Id type : members)
 		node.add(type);
+
+	if (name)
+		add_node_without_result(_debug_b, {}, spv::OpName)
+			.add(node.result)
+			.add_string(name);
+
 	return node.result;
 }
-spv::Id spirv_module::define_variable(const location &loc, const reshadefx::spv_type &type, spv::StorageClass storage, spv::Id initializer)
-{
-	spv_instruction &node = add_node(storage != spv::StorageClassFunction ? _variables : _functions2[_current_function].variables, loc, spv::OpVariable, convert_type(type))
-		.add(storage);
-	if (initializer)
-		node.add(initializer);
-	return node.result;
-}
-spv::Id spirv_module::define_parameter(const location &loc, const reshadefx::spv_type &type)
-{
-	_functions2[_current_function].param_types.push_back(type);
-	spv_instruction &node = add_node(_functions2[_current_function].variables, loc, spv::OpFunctionParameter, convert_type(type));
-	return node.result;
-}
-spv::Id spirv_module::define_function(const location &loc, const reshadefx::spv_type &return_type)
+spv::Id spirv_module::define_function(const char *name, const location &loc, const reshadefx::spv_type &return_type)
 {
 	auto &function = _functions2.emplace_back();
 	function.return_type = return_type;
@@ -147,15 +139,37 @@ spv::Id spirv_module::define_function(const location &loc, const reshadefx::spv_
 
 	_current_function = _functions2.size() - 1;
 
+	if (name)
+		add_node_without_result(_debug_b, {}, spv::OpName)
+			.add(instruction.result)
+			.add_string(name);
+
 	return instruction.result;
 }
-
-void spirv_module::add_name(spv::Id id, const char *name)
+spv::Id spirv_module::define_variable(const char *name, const location &loc, const reshadefx::spv_type &type, spv::StorageClass storage, spv::Id initializer)
 {
-	add_node_without_result(_debug_b, {}, spv::OpName)
-		.add(id)
-		.add_string(name);
+	spv_instruction &node = add_node(storage != spv::StorageClassFunction ? _variables : _functions2[_current_function].variables, loc, spv::OpVariable, convert_type(type))
+		.add(storage);
+	if (initializer)
+		node.add(initializer);
+	if (name)
+		add_node_without_result(_debug_b, {}, spv::OpName)
+			.add(node.result)
+			.add_string(name);
+	return node.result;
 }
+spv::Id spirv_module::define_parameter(const char *name, const location &loc, const reshadefx::spv_type &type)
+{
+	_functions2[_current_function].param_types.push_back(type);
+	spv_instruction &node = add_node(_functions2[_current_function].variables, loc, spv::OpFunctionParameter, convert_type(type));
+
+	add_node_without_result(_debug_b, {}, spv::OpName)
+		.add(node.result)
+		.add_string(name);
+
+	return node.result;
+}
+
 void spirv_module::add_builtin(spv::Id id, spv::BuiltIn builtin)
 {
 	add_node_without_result(_annotations, {}, spv::OpDecorate)
@@ -210,15 +224,25 @@ void spirv_module::add_cast_operation(spv_expression &chain, const reshadefx::sp
 	{
 		if (in_type.is_integral())
 		{
-			assert(!chain.type.is_integral());
-			for (unsigned int i = 0; i < 16; ++i)
-				chain.constant.as_uint[i] = static_cast<int>(chain.constant.as_float[i]);
+			if (!chain.type.is_integral())
+			{
+				for (unsigned int i = 0; i < 16; ++i)
+					chain.constant.as_uint[i] = static_cast<int>(chain.constant.as_float[i]);
+			}
 		}
 		else
 		{
-			assert(chain.type.is_integral());
-			for (unsigned int i = 0; i < 16; ++i)
-				chain.constant.as_float[i] = static_cast<float>(static_cast<int>(chain.constant.as_uint[i]));
+			if (!chain.type.is_integral())
+			{
+				assert(chain.type.is_floating_point() && chain.type.is_scalar() && in_type.is_vector());
+				for (unsigned int i = 1; i < in_type.rows; ++i)
+					chain.constant.as_float[i] = chain.constant.as_float[0];
+			}
+			else
+			{
+				for (unsigned int i = 0; i < 16; ++i)
+					chain.constant.as_float[i] = static_cast<float>(static_cast<int>(chain.constant.as_uint[i]));
+			}
 		}
 	}
 	else
@@ -228,6 +252,18 @@ void spirv_module::add_cast_operation(spv_expression &chain, const reshadefx::sp
 
 	chain.type = in_type;
 	//chain.is_lvalue = false; // Can't do this because of 'if (chain.is_lvalue)' check in 'access_chain_load'
+}
+void spirv_module::add_member_access(spv_expression &chain, size_t index, const spv_type &in_type)
+{
+	spv_type target_type = in_type;
+	target_type.is_pointer = true;
+
+	spv_constant index_c = {};
+	index_c.as_uint[0] = index;
+	chain.ops.push_back({ spv_expression::index, chain.type, target_type, convert_constant({ spv_type::datatype_uint, 1, 1 }, index_c) });
+
+	chain.is_constant = false;
+	chain.type = in_type;
 }
 void spirv_module::add_static_index_access(spv_expression &chain, size_t index)
 {
@@ -491,7 +527,7 @@ spv::Id spirv_module::convert_type(const reshadefx::spv_type &info)
 				break;
 			}
 			case spv_type::datatype_sampler:
-				assert(info.definition);
+				//assert(info.definition); // TODO
 				type = add_node(_types, {}, spv::OpTypeSampledImage)
 					.add(info.definition)
 					.result;
