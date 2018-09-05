@@ -58,6 +58,9 @@ namespace reshadefx
 		bool parse_type(spv_type &type);
 		bool parse_array_size(spv_type &type);
 
+		bool parse_statement(spv_basic_block &section, bool scoped);
+		bool parse_statement_block(spv_basic_block &section, bool scoped);
+
 		bool parse_expression(spv_basic_block &section, struct spv_expression &expression);
 		bool parse_expression_unary(spv_basic_block &section, struct spv_expression &expression);
 		bool parse_expression_multary(spv_basic_block &section, struct spv_expression &expression, unsigned int precedence = 0);
@@ -65,10 +68,7 @@ namespace reshadefx
 
 		bool parse_annotations(std::unordered_map<std::string, spv_constant> &annotations);
 
-		bool parse_top_level();
-
-		bool parse_statement(spv_basic_block &section, bool scoped);
-		bool parse_statement_block(spv_basic_block &section, bool scoped);
+		bool parse_top();
 
 		bool parse_struct();
 		bool parse_function(spv_type type, std::string name);
@@ -82,18 +82,16 @@ namespace reshadefx
 		std::unique_ptr<lexer> _lexer, _lexer_backup;
 		token _token, _token_next, _token_backup;
 
-		spv_struct_info _uniforms;
-		std::vector<std::unique_ptr<spv_function_info>> _functions;
-		std::vector<spv_technique_info> techniques;
-		std::unordered_map<spv::Id, spv_struct_info> _structs;
-
-		std::unordered_map<spv::Id, std::string> _texture_semantics;
-
 		std::vector<spv::Id> _loop_break_target_stack;
 		std::vector<spv::Id> _loop_continue_target_stack;
+
+		std::unordered_map<spv::Id, std::string> _texture_semantics;
+		std::unordered_map<spv::Id, spv_struct_info> _structs;
+		std::vector<std::unique_ptr<spv_function_info>> _functions;
 
 		spv::Id _global_ubo_type = 0;
 		spv::Id _global_ubo_variable = 0;
 		uint32_t _global_ubo_offset = 0;
+		spv_struct_info _uniforms;
 	};
 }

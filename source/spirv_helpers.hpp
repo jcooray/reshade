@@ -232,11 +232,4 @@ namespace reshadefx
 		unsigned int blend_op = 1, blend_op_alpha = 1, src_blend = 1, dest_blend = 0, src_blend_alpha = 1, dest_blend_alpha = 0;
 		unsigned int stencil_comparison_func = 1, stencil_reference_value, stencil_op_pass = 1, stencil_op_fail = 1, stencil_op_depth_fail = 1;
 	};
-
-	struct spv_technique_info
-	{
-		std::string name, unique_name;
-		std::unordered_map<std::string, spv_constant> annotation_list;
-		std::vector<spv_pass_info> pass_list;
-	};
 }

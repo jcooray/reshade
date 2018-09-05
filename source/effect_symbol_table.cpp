@@ -326,6 +326,9 @@ bool reshadefx::symbol_table::resolve_function_call(const std::string &name, con
 
 			const spv_function_info *const function = it->function;
 
+			if (function == nullptr)
+				continue;
+
 			if (function->parameter_list.empty())
 			{
 				if (arguments.empty())

@@ -70,6 +70,8 @@ namespace reshadefx
 		void leave_block_and_branch_conditional(spv_basic_block &section, spv::Id condition, spv::Id true_target, spv::Id false_target);
 		void leave_function();
 
+		spv::Id construct_type(spv_basic_block &section, const spv_type &type, std::vector<spv_expression> &arguments);
+
 		spv::Id access_chain_load(spv_basic_block &section, const spv_expression &chain);
 		void    access_chain_store(spv_basic_block &section, const spv_expression &chain, spv::Id value, const spv_type &value_type);
 

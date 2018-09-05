@@ -42,6 +42,185 @@ static inline uintptr_t align(uintptr_t address, size_t alignment)
 	return (address % alignment != 0) ? address + alignment - address % alignment : address;
 }
 
+static reshadefx::spv_constant evaluate_constant_expression(spv::Op op, const reshadefx::spv_expression &exp)
+{
+	assert(exp.is_constant);
+
+	reshadefx::spv_constant constant_data = {};
+
+	switch (op)
+	{
+	case spv::OpLogicalNot:
+		for (unsigned int i = 0; i < exp.type.components(); ++i)
+			constant_data.as_uint[i] = !exp.constant.as_uint[i];
+		break;
+	case spv::OpFNegate:
+		for (unsigned int i = 0; i < exp.type.components(); ++i)
+			constant_data.as_float[i] = -exp.constant.as_float[i];
+		break;
+	case spv::OpSNegate:
+		for (unsigned int i = 0; i < exp.type.components(); ++i)
+			constant_data.as_int[i] = -exp.constant.as_int[i];
+		break;
+	case spv::OpNot:
+		for (unsigned int i = 0; i < exp.type.components(); ++i)
+			constant_data.as_uint[i] = ~exp.constant.as_uint[i];
+		break;
+	}
+
+	return constant_data;
+}
+static reshadefx::spv_constant evaluate_constant_expression(spv::Op op, const reshadefx::spv_expression &lhs, const reshadefx::spv_expression &rhs)
+{
+	assert(lhs.is_constant && rhs.is_constant);
+
+	reshadefx::spv_constant constant_data = lhs.constant;
+
+	switch (op)
+	{
+	case spv::OpFRem:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_float[i] = fmodf(lhs.constant.as_float[i], rhs.constant.as_float[i]);
+		break;
+	case spv::OpSRem:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_int[i] %= rhs.constant.as_int[i];
+		break;
+	case spv::OpUMod:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] %= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFMul:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_float[i] *= rhs.constant.as_float[i];
+		break;
+	case spv::OpIMul:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] *= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFAdd:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_float[i] += rhs.constant.as_float[i];
+		break;
+	case spv::OpIAdd:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] += rhs.constant.as_uint[i];
+		break;
+	case spv::OpFSub:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_float[i] -= rhs.constant.as_float[i];
+		break;
+	case spv::OpISub:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] -= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFDiv:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_float[i] /= rhs.constant.as_float[i];
+		break;
+	case spv::OpSDiv:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_int[i] /= rhs.constant.as_int[i];
+		break;
+	case spv::OpUDiv:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] /= rhs.constant.as_uint[i];
+		break;
+	case spv::OpLogicalAnd:
+	case spv::OpBitwiseAnd:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] &= rhs.constant.as_uint[i];
+		break;
+	case spv::OpLogicalOr:
+	case spv::OpBitwiseOr:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] |= rhs.constant.as_uint[i];
+		break;
+	case spv::OpBitwiseXor:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] ^= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdLessThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] < rhs.constant.as_float[i];
+		break;
+	case spv::OpSLessThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_int[i] < rhs.constant.as_int[i];
+		break;
+	case spv::OpULessThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] < rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdLessThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] <= rhs.constant.as_float[i];
+		break;
+	case spv::OpSLessThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_int[i] <= rhs.constant.as_int[i];
+		break;
+	case spv::OpULessThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] <= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdGreaterThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] > rhs.constant.as_float[i];
+		break;
+	case spv::OpSGreaterThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_int[i] > rhs.constant.as_int[i];
+		break;
+	case spv::OpUGreaterThan:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] > rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdGreaterThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] >= rhs.constant.as_float[i];
+		break;
+	case spv::OpSGreaterThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_int[i] >= rhs.constant.as_int[i];
+		break;
+	case spv::OpUGreaterThanEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] >= rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] == rhs.constant.as_float[i];
+	case spv::OpIEqual:
+	case spv::OpLogicalEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] == rhs.constant.as_uint[i];
+		break;
+	case spv::OpFOrdNotEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_float[i] != rhs.constant.as_float[i];
+	case spv::OpINotEqual:
+	case spv::OpLogicalNotEqual:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] = lhs.constant.as_uint[i] != rhs.constant.as_uint[i];
+		break;
+	case spv::OpShiftLeftLogical:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] <<= rhs.constant.as_uint[i];
+		break;
+	case spv::OpShiftRightArithmetic:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_int[i] >>= rhs.constant.as_int[i];
+		break;
+	case spv::OpShiftRightLogical:
+		for (unsigned int i = 0; i < lhs.type.components(); ++i)
+			constant_data.as_uint[i] >>= rhs.constant.as_uint[i];
+		break;
+	}
+
+	return constant_data;
+}
+
 bool reshadefx::parser::run(const std::string &input)
 {
 	_lexer.reset(new lexer(input));
@@ -52,7 +231,7 @@ bool reshadefx::parser::run(const std::string &input)
 	bool success = true;
 
 	while (!peek(tokenid::end_of_file))
-		if (!parse_top_level())
+		if (!parse_top())
 			success = false;
 
 	// Create global uniform buffer object
@@ -380,13 +559,11 @@ bool reshadefx::parser::parse_type(spv_type &type)
 
 	accept_type_qualifiers(type);
 
-	const auto location = _token_next.location;
-
 	if (!accept_type_class(type))
 		return false;
 
 	if (type.is_integral() && (type.has(spv_type::qualifier_centroid) || type.has(spv_type::qualifier_noperspective)))
-		return error(location, 4576, "signature specifies invalid interpolation mode for integer component type"), false;
+		return error(_token.location, 4576, "signature specifies invalid interpolation mode for integer component type"), false;
 	else if (type.has(spv_type::qualifier_centroid) && !type.has(spv_type::qualifier_noperspective))
 		type.qualifiers |= spv_type::qualifier_linear;
 
@@ -400,14 +577,14 @@ bool reshadefx::parser::parse_array_size(spv_type &type)
 	if (accept('['))
 	{
 		// Length expression should be literal, so no instructions to store anywhere
-		spv_basic_block temp_section;
+		spv_basic_block block;
 
 		if (accept(']'))
 		{
 			// No length expression, so this is an unsized array
 			type.array_length = -1;
 		}
-		else if (spv_expression expression; parse_expression(temp_section, expression) && expect(']'))
+		else if (spv_expression expression; parse_expression(block, expression) && expect(']'))
 		{
 			if (!expression.is_constant || !(expression.type.is_scalar() && expression.type.is_integral()))
 				return error(expression.location, 3058, "array dimensions must be literal scalar expressions"), false;
@@ -596,7 +773,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 				// Create a constant one in the type of the expression
 				spv_constant one = {};
 				for (unsigned int i = 0; i < exp.type.components(); ++i)
-					one.as_uint[i] = exp.type.is_floating_point() ? 0x3f800000u : 1u;
+					if (exp.type.is_floating_point()) one.as_float[i] = 1.0f; else one.as_uint[i] =  1u;
 				const spv::Id constant = convert_constant(exp.type, one);
 
 				spv::Id result = add_node(section, location, op, convert_type(exp.type))
@@ -615,27 +792,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 
 				if (exp.is_constant)
 				{
-					switch (op)
-					{
-					case spv::OpLogicalNot:
-						for (unsigned int i = 0; i < exp.type.components(); ++i)
-							exp.constant.as_uint[i] = !exp.constant.as_uint[i];
-						break;
-					case spv::OpFNegate:
-						for (unsigned int i = 0; i < exp.type.components(); ++i)
-							exp.constant.as_float[i] = -exp.constant.as_float[i];
-						break;
-					case spv::OpSNegate:
-						for (unsigned int i = 0; i < exp.type.components(); ++i)
-							exp.constant.as_int[i] = -exp.constant.as_int[i];
-						break;
-					case spv::OpNot:
-						for (unsigned int i = 0; i < exp.type.components(); ++i)
-							exp.constant.as_uint[i] = ~exp.constant.as_uint[i];
-						break;
-					}
-
-					exp.reset_to_rvalue_constant(exp.type, location, exp.constant);
+					exp.reset_to_rvalue_constant(exp.type, location, evaluate_constant_expression(op, exp));
 				}
 				else
 				{
@@ -701,7 +858,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 		std::vector<spv_expression> elements;
 
 		bool constant = true;
-		spv_type composite_type = { spv_type::datatype_void, 1, 1 };
+		spv_type composite_type = { spv_type::datatype_bool, 1, 1 };
 
 		while (!peek('}'))
 		{
@@ -726,11 +883,10 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 		if (constant)
 		{
 			spv_constant constant_data = {};
-
-			for (auto &elem : elements)
+			for (spv_expression &element : elements)
 			{
-				add_cast_operation(elem, composite_type);
-				constant_data.as_array.push_back(elem.constant);
+				add_cast_operation(element, composite_type);
+				constant_data.as_array.push_back(element.constant);
 			}
 
 			composite_type.array_length = elements.size();
@@ -740,20 +896,20 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 		else
 		{
 			std::vector<spv::Id> ids;
-			for (auto &elem : elements)
+			for (spv_expression &element : elements)
 			{
-				add_cast_operation(elem, composite_type);
-				ids.push_back(access_chain_load(section, elem));
+				add_cast_operation(element, composite_type);
+				ids.push_back(access_chain_load(section, element));
 				assert(ids.back() != 0);
 			}
 
 			composite_type.array_length = elements.size();
 
-			spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(composite_type));
-			for (auto &elem : ids)
-				node.add(elem);
+			const spv::Id result = add_node(section, location, spv::OpCompositeConstruct, convert_type(composite_type))
+				.add(ids.begin(), ids.end())
+				.result;
 
-			exp.reset_to_rvalue(node.result, composite_type, node.location);
+			exp.reset_to_rvalue(result, composite_type, location);
 		}
 
 		return expect('}');
@@ -789,7 +945,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 	}
 	else if (accept(tokenid::string_literal))
 	{
-		std::string value = _token.literal_as_string;
+		std::string value = std::move(_token.literal_as_string);
 
 		// Multiple string literals in sequence are concatenated into a single string literal
 		while (accept(tokenid::string_literal))
@@ -845,103 +1001,23 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 
 		if (constant) // Constants can be converted at compile time
 		{
-			spv_constant data = {};
+			spv_constant constant_data = {};
 
 			unsigned int i = 0;
-			for (auto &argument : arguments)
+			for (spv_expression &argument : arguments)
 			{
-				spv_type target_type = argument.type;
-				target_type.base = type.base;
-				add_cast_operation(argument, target_type);
+				add_cast_operation(argument, { type.base, argument.type.rows, argument.type.cols });
 				for (unsigned int k = 0; k < argument.type.components(); ++k)
-					data.as_uint[i++] = argument.constant.as_uint[k];
+					constant_data.as_uint[i++] = argument.constant.as_uint[k];
 			}
 
-			exp.reset_to_rvalue_constant(type, location, data);
+			exp.reset_to_rvalue_constant(type, location, constant_data);
 		}
 		else if (arguments.size() > 1)
 		{
-			// There must be exactly one constituent for each top-level component of the result
-			if (type.is_matrix())
-			{
-				assert(type.rows == type.cols);
+			const spv::Id result = construct_type(section, type, arguments);
 
-				std::vector<spv::Id> ids;
-				ids.reserve(num_components);
-
-				// First, extract all arguments so that a list of scalars exist
-				for (auto &argument : arguments)
-				{
-					if (!argument.type.is_scalar())
-					{
-						for (unsigned int index = 0; index < argument.type.components(); ++index)
-						{
-							spv_expression scalar = argument;
-							add_static_index_access(scalar, index);
-							spv_type scalar_type = scalar.type;
-							scalar_type.base = type.base;
-							add_cast_operation(scalar, scalar_type);
-							ids.push_back(access_chain_load(section, scalar));
-							assert(ids.back() != 0);
-						}
-					}
-					else
-					{
-						spv_type scalar_type = argument.type;
-						scalar_type.base = type.base;
-						add_cast_operation(argument, scalar_type);
-						ids.push_back(access_chain_load(section, argument));
-						assert(ids.back() != 0);
-					}
-				}
-
-				// Second, turn that list of scalars into a list of column vectors
-				for (size_t i = 0; i < ids.size(); i += type.rows)
-				{
-					spv_type vector_type = type;
-					vector_type.cols = 1;
-
-					spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(vector_type));
-
-					for (unsigned int k = 0; k < type.rows; ++k)
-						node.add(ids[i + k]);
-
-					ids[i] = node.result;
-				}
-
-				// Finally, construct a matrix from those column vectors
-				spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
-
-				for (size_t i = 0; i < ids.size(); i += type.rows)
-				{
-					node.add(ids[i]);
-				}
-
-				exp.reset_to_rvalue(node.result, type, location);
-			}
-			// The exception is that for constructing a vector, a contiguous subset of the scalars consumed can be represented by a vector operand instead
-			else
-			{
-				assert(type.is_vector());
-
-				std::vector<spv::Id> ids;
-				for (auto &argument : arguments)
-				{
-					spv_type target_type = argument.type;
-					target_type.base = type.base;
-					add_cast_operation(argument, target_type);
-					assert(argument.type.is_scalar() || argument.type.is_vector());
-					ids.push_back(access_chain_load(section, argument));
-					assert(ids.back() != 0);
-				}
-
-				spv_instruction &node = add_node(section, location, spv::OpCompositeConstruct, convert_type(type));
-
-				for (size_t i = 0; i < ids.size(); ++i)
-					node.add(ids[i]);
-
-				exp.reset_to_rvalue(node.result, type, location);
-			}
+			exp.reset_to_rvalue(result, type, location);
 		}
 		else // A constructor call with a single argument is identical to a cast
 		{
@@ -959,7 +1035,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 		std::string identifier;
 
 		if (exclusive ? expect(tokenid::identifier) : accept(tokenid::identifier))
-			identifier = _token.literal_as_string;
+			identifier = std::move(_token.literal_as_string);
 		else
 			return false; // Warning: This may leave the expression path without issuing an error, so need to catch that at the target side!
 
@@ -968,7 +1044,6 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 		{
 			if (!expect(tokenid::identifier))
 				return false;
-
 			identifier += "::" + _token.literal_as_string;
 		}
 
@@ -1060,8 +1135,8 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			else
 			{
 				// This is a function symbol, so add a call to it
-				spv_instruction &node = add_node(section, location, spv::OpFunctionCall, convert_type(symbol.type));
-				node.add(symbol.id); // Function
+				spv_instruction &node = add_node(section, location, spv::OpFunctionCall, convert_type(symbol.type))
+					.add(symbol.id); // Function
 				for (size_t i = 0; i < parameters.size(); ++i)
 					node.add(parameters[i].base); // Arguments
 
@@ -1079,21 +1154,16 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			if (!symbol.op) // Note: 'symbol.id' is zero for constants, so have to check 'symbol.op', which cannot be zero
 				return error(location, 3004, "undeclared identifier '" + identifier + "'"), false;
 			else if (symbol.op == spv::OpVariable)
-			{
-				if (symbol.member_index != std::numeric_limits<size_t>::max())
-				{
-					exp.reset_to_lvalue(symbol.id, { spv_type::datatype_struct, 0, 0, 0, false, false, false, 0, symbol.id }, location);
-					add_member_access(exp, symbol.member_index, symbol.type);
-				}
-				else
-				{
-					// Simply return the pointer to the variable, dereferencing is done on site where necessary
-					exp.reset_to_lvalue(symbol.id, symbol.type, location);
-				}
-			}
+				// Simply return the pointer to the variable, dereferencing is done on site where necessary
+				exp.reset_to_lvalue(symbol.id, symbol.type, location);
 			else if (symbol.op == spv::OpConstant)
 				// Constants are loaded into the access chain
 				exp.reset_to_rvalue_constant(symbol.type, location, symbol.constant);
+			else if (symbol.op == spv::OpAccessChain) {
+				// Uniform variables need to be dereferenced
+				exp.reset_to_lvalue(symbol.id, { spv_type::datatype_struct, 0, 0, 0, false, false, false, 0, symbol.id }, location);
+				add_member_access(exp, symbol.member_index, symbol.type);
+			}
 			else // Can only reference variables and constants by name, functions need to be called
 				return error(location, 3005, "identifier '" + identifier + "' represents a function, not a variable"), false;
 		}
@@ -1121,7 +1191,7 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			// Create a constant one in the type of the expression
 			spv_constant one = {};
 			for (unsigned int i = 0; i < exp.type.components(); ++i)
-				one.as_uint[i] = exp.type.is_floating_point() ? 0x3f800000u : 1u;
+				if (exp.type.is_floating_point()) one.as_float[i] = 1.0f; else one.as_uint[i] = 1u;
 			const spv::Id constant = convert_constant(exp.type, one);
 
 			spv::Id result = add_node(section, location, op, convert_type(exp.type))
@@ -1140,8 +1210,8 @@ bool reshadefx::parser::parse_expression_unary(spv_basic_block &section, spv_exp
 			if (!expect(tokenid::identifier))
 				return false;
 
-			location = _token.location;
-			const auto subscript = _token.literal_as_string;
+			location = std::move(_token.location);
+			const auto subscript = std::move(_token.literal_as_string);
 
 			if (accept('(')) // Methods (function calls on types) are not supported right now
 			{
@@ -1442,151 +1512,7 @@ bool reshadefx::parser::parse_expression_multary(spv_basic_block &section, spv_e
 				add_cast_operation(lhs, type);
 				add_cast_operation(rhs, type);
 
-				spv_constant constant_data = lhs.constant;
-
-				switch (op)
-				{
-				case spv::OpFRem:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_float[i] = fmodf(lhs.constant.as_float[i], rhs.constant.as_float[i]);
-					break;
-				case spv::OpSRem:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_int[i] %= rhs.constant.as_int[i];
-					break;
-				case spv::OpUMod:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] %= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFMul:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_float[i] *= rhs.constant.as_float[i];
-					break;
-				case spv::OpIMul:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] *= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFAdd:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_float[i] += rhs.constant.as_float[i];
-					break;
-				case spv::OpIAdd:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] += rhs.constant.as_uint[i];
-					break;
-				case spv::OpFSub:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_float[i] -= rhs.constant.as_float[i];
-					break;
-				case spv::OpISub:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] -= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFDiv:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_float[i] /= rhs.constant.as_float[i];
-					break;
-				case spv::OpSDiv:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_int[i] /= rhs.constant.as_int[i];
-					break;
-				case spv::OpUDiv:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] /= rhs.constant.as_uint[i];
-					break;
-				case spv::OpLogicalAnd:
-				case spv::OpBitwiseAnd:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] &= rhs.constant.as_uint[i];
-					break;
-				case spv::OpLogicalOr:
-				case spv::OpBitwiseOr:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] |= rhs.constant.as_uint[i];
-					break;
-				case spv::OpBitwiseXor:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] ^= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdLessThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] < rhs.constant.as_float[i];
-					break;
-				case spv::OpSLessThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_int[i] < rhs.constant.as_int[i];
-					break;
-				case spv::OpULessThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] < rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdLessThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] <= rhs.constant.as_float[i];
-					break;
-				case spv::OpSLessThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_int[i] <= rhs.constant.as_int[i];
-					break;
-				case spv::OpULessThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] <= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdGreaterThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] > rhs.constant.as_float[i];
-					break;
-				case spv::OpSGreaterThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_int[i] > rhs.constant.as_int[i];
-					break;
-				case spv::OpUGreaterThan:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] > rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdGreaterThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] >= rhs.constant.as_float[i];
-					break;
-				case spv::OpSGreaterThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_int[i] >= rhs.constant.as_int[i];
-					break;
-				case spv::OpUGreaterThanEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] >= rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] == rhs.constant.as_float[i];
-				case spv::OpIEqual:
-				case spv::OpLogicalEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] == rhs.constant.as_uint[i];
-					break;
-				case spv::OpFOrdNotEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_float[i] != rhs.constant.as_float[i];
-				case spv::OpINotEqual:
-				case spv::OpLogicalNotEqual:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] = lhs.constant.as_uint[i] != rhs.constant.as_uint[i];
-					break;
-				case spv::OpShiftLeftLogical:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] <<= rhs.constant.as_uint[i];
-					break;
-				case spv::OpShiftRightArithmetic:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_int[i] >>= rhs.constant.as_int[i];
-					break;
-				case spv::OpShiftRightLogical:
-					for (unsigned int i = 0; i < type.components(); ++i)
-						constant_data.as_uint[i] >>= rhs.constant.as_uint[i];
-					break;
-				}
-
-				lhs.reset_to_rvalue_constant(type, lhs.location, constant_data);
+				lhs.reset_to_rvalue_constant(type, lhs.location, evaluate_constant_expression(op, lhs, rhs));
 			}
 			else
 			{
@@ -1667,8 +1593,7 @@ bool reshadefx::parser::parse_expression_multary(spv_basic_block &section, spv_e
 				return error(lhs.location, 3022, "boolean or vector expression expected"), false;
 
 			// Parse the first part of the right hand side of the ternary operation
-			spv_expression true_exp;
-			spv_basic_block true_block;
+			spv_expression true_exp; spv_basic_block true_block;
 			if (!parse_expression(true_block, true_exp))
 				return false;
 
@@ -1676,8 +1601,7 @@ bool reshadefx::parser::parse_expression_multary(spv_basic_block &section, spv_e
 				return false;
 
 			// Parse the second part of the right hand side of the ternary operation
-			spv_expression false_exp;
-			spv_basic_block false_block;
+			spv_expression false_exp; spv_basic_block false_block;
 			if (!parse_expression_assignment(false_block, false_exp))
 				return false;
 
@@ -1795,7 +1719,7 @@ bool reshadefx::parser::parse_expression_assignment(spv_basic_block &section, sp
 		if (op != spv::OpNop)
 		{
 			// Load value from left hand side as well to use in the operation
-			spv::Id lhs_value = access_chain_load(section, lhs);
+			const spv::Id lhs_value = access_chain_load(section, lhs);
 			assert(lhs_value != 0);
 
 			// Handle arithmetic assignment operation
@@ -1820,6 +1744,7 @@ bool reshadefx::parser::parse_expression_assignment(spv_basic_block &section, sp
 
 bool reshadefx::parser::parse_annotations(std::unordered_map<std::string, spv_constant> &annotations)
 {
+	// Check if annotations exist and return early if none do
 	if (!accept('<'))
 		return true;
 
@@ -1836,7 +1761,9 @@ bool reshadefx::parser::parse_annotations(std::unordered_map<std::string, spv_co
 		const auto name = std::move(_token.literal_as_string);
 
 		spv_expression expression;
-		if (spv_basic_block temp_section; !expect('=') || !parse_expression_unary(temp_section, expression) || !expect(';'))
+
+		// Pass in temporary basic block, the expression should be constant
+		if (spv_basic_block block; !expect('=') || !parse_expression_unary(block, expression) || !expect(';'))
 			return false;
 
 		if (!expression.is_constant) {
@@ -1853,15 +1780,15 @@ bool reshadefx::parser::parse_annotations(std::unordered_map<std::string, spv_co
 
 // -- Statement & Declaration Parsing -- //
 
-bool reshadefx::parser::parse_top_level()
+bool reshadefx::parser::parse_top()
 {
 	if (accept(tokenid::namespace_))
 	{
-		// Anonymous namespaces are not supported right now
+		// Anonymous namespaces are not supported right now, so an identifier is a must
 		if (!expect(tokenid::identifier))
 			return false;
 
-		const auto name = _token.literal_as_string;
+		const auto name = std::move(_token.literal_as_string);
 
 		if (!expect('{'))
 			return false;
@@ -1870,8 +1797,8 @@ bool reshadefx::parser::parse_top_level()
 
 		bool success = true;
 		// Recursively parse top level statements until the namespace is closed again
-		while (!peek('}')) // Empty namespaces are valid, so use 'while' instead of 'do' loop
-			if (!parse_top_level())
+		while (!peek('}')) // Empty namespaces are valid
+			if (!parse_top())
 				success = false; // Continue parsing even after encountering an error
 
 		leave_namespace();
@@ -1895,11 +1822,11 @@ bool reshadefx::parser::parse_top_level()
 
 		if (peek('('))
 		{
-			// This is definitely a function declaration, so parse it
 			const auto name = std::move(_token.literal_as_string);
+			// This is definitely a function declaration, so parse it
 			if (!parse_function(type, name)) {
 				// Insert dummy function into symbol table, so later references can be resolved despite the error
-				insert_symbol(name, { spv::OpFunction, 0xFFFFFFFF, { spv_type::datatype_function } }, true);
+				insert_symbol(name, { spv::OpFunction, std::numeric_limits<spv::Id>::max(), { spv_type::datatype_function } }, true);
 				return false;
 			}
 		}
@@ -1907,20 +1834,20 @@ bool reshadefx::parser::parse_top_level()
 		{
 			// There may be multiple variable names after the type, handle them all
 			unsigned int count = 0;
-			// Global variables can't have non-constant initializers, so don't need a valid block as input
-			spv_basic_block temp_section;
+			// Global variables can't have non-constant initializers, so pass in a throwaway basic block
+			spv_basic_block block;
 			do {
 				if (count++ > 0 && !(expect(',') && expect(tokenid::identifier)))
 					return false;
 				const auto name = std::move(_token.literal_as_string);
-				if (!parse_variable(type, name, temp_section, true)) {
+				if (!parse_variable(type, name, block, true)) {
 					// Insert dummy variable into symbol table, so later references can be resolved despite the error
-					insert_symbol(name, { spv::OpVariable, 0xFFFFFFFF, type }, true);
+					insert_symbol(name, { spv::OpVariable, std::numeric_limits<spv::Id>::max(), type }, true);
 					return consume_until(';'), false; // Skip the rest of the statement in case of an error
 				}
 			} while (!peek(';'));
 
-			if (!expect(';')) // Variable declarations are finished with a semicolon
+			if (!expect(';')) // Variable declarations are terminated with a semicolon
 				return false;
 		}
 	}
@@ -1945,7 +1872,7 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 	// Read any loop and branch control attributes first
 	while (accept('['))
 	{
-		const auto attribute = _token_next.literal_as_string;
+		const auto attribute = std::move(_token_next.literal_as_string);
 
 		if (!expect(tokenid::identifier) || !expect(']'))
 			return false;
@@ -1962,11 +1889,9 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 			warning(_token.location, 0, "unknown attribute");
 	}
 
-	// Parse statement block
-	if (peek('{'))
+	if (peek('{')) // Parse statement block
 		return parse_statement_block(section, scoped);
-	// Ignore empty statements
-	else if (accept(';'))
+	else if (accept(';')) // Ignore empty statements
 		return true;
 
 	// Most statements with the exception of declarations are only valid inside functions
@@ -2132,7 +2057,7 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 				do { // There may be multiple declarations behind a type, so loop through them
 					if (count++ > 0 && !expect(','))
 						return false;
-					if (!expect(tokenid::identifier) || !parse_variable(type, _token.literal_as_string, section))
+					if (!expect(tokenid::identifier) || !parse_variable(type, std::move(_token.literal_as_string), section))
 						return false;
 				} while (!peek(';'));
 			}
@@ -2405,23 +2330,24 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 
 			if (!peek(';'))
 			{
-				spv_expression return_exp;
-				if (!parse_expression(section, return_exp))
+				spv_expression expression;
+				if (!parse_expression(section, expression))
 					return consume_until(';'), false;
 
+				// Cannot return to void
 				if (parent->return_type.is_void())
 					// Consume the semicolon that follows the return expression so that parsing may continue
 					return error(location, 3079, "void functions cannot return a value"), accept(';'), false;
 
-				if (return_exp.type.is_array() || !spv_type::rank(return_exp.type, parent->return_type))
+				// Cannot return arrays from a function
+				if (expression.type.is_array() || !spv_type::rank(expression.type, parent->return_type))
 					return error(location, 3017, "expression does not match function return type"), accept(';'), false;
-
-				if (return_exp.type.components() > parent->return_type.components())
-					warning(return_exp.location, 3206, "implicit truncation of vector type");
+				else if (expression.type.components() > parent->return_type.components())
+					warning(expression.location, 3206, "implicit truncation of vector type");
 
 				// Load return value and perform implicit cast to function return type
-				add_cast_operation(return_exp, parent->return_type);
-				const spv::Id return_value = access_chain_load(section, return_exp);
+				add_cast_operation(expression, parent->return_type);
+				const spv::Id return_value = access_chain_load(section, expression);
 				assert(return_value != 0);
 
 				leave_block_and_return(section, return_value);
@@ -2463,6 +2389,7 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 		unsigned int count = 0;
 		do { // There may be multiple declarations behind a type, so loop through them
 			if (count++ > 0 && !expect(','))
+				// Try to consume the rest of the declaration so that parsing may continue despite the error
 				return consume_until(';'), false;
 			if (!expect(tokenid::identifier) || !parse_variable(type, std::move(_token.literal_as_string), section))
 				return consume_until(';'), false;
@@ -2474,7 +2401,7 @@ bool reshadefx::parser::parse_statement(spv_basic_block &section, bool scoped)
 
 	// Handle expression statements
 	if (spv_expression expression; parse_expression(section, expression))
-		return expect(';');
+		return expect(';'); // A statement has to be terminated with a semicolon
 
 	// No token should come through here, since all statements and expressions should have been handled above, so this is an error in the syntax
 	error(_token_next.location, 3000, "syntax error: unexpected '" + token::id_to_name(_token_next.id) + "'");
@@ -2501,7 +2428,7 @@ bool reshadefx::parser::parse_statement_block(spv_basic_block &section, bool sco
 				leave_scope();
 
 			// Ignore the rest of this block
-			unsigned level = 0;
+			unsigned int level = 0;
 
 			while (!peek(tokenid::end_of_file))
 			{
@@ -2532,10 +2459,11 @@ bool reshadefx::parser::parse_statement_block(spv_basic_block &section, bool sco
 
 bool reshadefx::parser::parse_struct()
 {
-	const auto location = _token.location;
+	const auto location = std::move(_token.location);
 
 	spv_struct_info info;
 
+	// The structure name is optional
 	if (accept(tokenid::identifier))
 		info.name = _token.literal_as_string;
 	else
@@ -2549,18 +2477,19 @@ bool reshadefx::parser::parse_struct()
 
 	std::vector<spv::Id> member_types;
 
-	while (!peek('}'))
+	while (!peek('}')) // Empty structures are possible
 	{
-		spv_type type;
-		if (!parse_type(type))
+		// Parse structure members
+		spv_type member_type;
+		if (!parse_type(member_type))
 			return error(_token_next.location, 3000, "syntax error: unexpected '" + token::id_to_name(_token_next.id) + "', expected struct member type"), consume_until('}'), false;
 
-		if (type.is_void())
+		if (member_type.is_void())
 			return error(_token_next.location, 3038, "struct members cannot be void"), consume_until('}'), false;
-		if (type.has(spv_type::qualifier_in) || type.has(spv_type::qualifier_out))
+		if (member_type.has(spv_type::qualifier_in) || member_type.has(spv_type::qualifier_out))
 			return error(_token_next.location, 3055, "struct members cannot be declared 'in' or 'out'"), consume_until('}'), false;
 
-		if (type.is_struct())
+		if (member_type.is_struct()) // Nesting structures would make input/output argument flattening more complicated, so prevent it for now
 			return error(_token_next.location, 3090, "nested struct members are not supported"), consume_until('}'), false;
 
 		unsigned int count = 0;
@@ -2571,12 +2500,14 @@ bool reshadefx::parser::parse_struct()
 				return consume_until('}'), false;
 
 			spv_struct_member_info member_info;
-			member_info.name = _token.literal_as_string;
-			member_info.type = type;
+			member_info.name = std::move(_token.literal_as_string);
+			member_info.type = member_type;
 
+			// Modify member specific type, so that following members in the declaration list are not affected by this
 			if (!parse_array_size(member_info.type))
 				return consume_until('}'), false;
 
+			// Structure members may have semantics to use them as input/output types
 			if (accept(':'))
 			{
 				if (!expect(tokenid::identifier))
@@ -2596,9 +2527,11 @@ bool reshadefx::parser::parse_struct()
 			return consume_until('}'), false;
 	}
 
+	// Empty structures are valid, but not usually intended, so emit a warning
 	if (member_types.empty())
 		warning(location, 5001, "struct has no members");
 
+	// Define the structure now that information about all the member types was gathered
 	info.definition = define_struct(info.unique_name.c_str(), location, member_types);
 
 	_structs[info.definition] = info;
@@ -2618,7 +2551,7 @@ bool reshadefx::parser::parse_struct()
 }
 bool reshadefx::parser::parse_function(spv_type type, std::string name)
 {
-	const auto location = _token.location;
+	const auto location = std::move(_token.location);
 
 	if (!expect('(')) // Functions always have a parameter list
 		return false;
@@ -2722,7 +2655,9 @@ bool reshadefx::parser::parse_function(spv_type type, std::string name)
 }
 bool reshadefx::parser::parse_variable(spv_type type, std::string name, spv_basic_block &section, bool global)
 {
-	const auto location = _token.location;
+	const auto location = std::move(_token.location);
+
+	spv_variable_info info;
 
 	if (type.is_void())
 		return error(location, 3038, "variables cannot be void"), false;
@@ -2764,7 +2699,6 @@ bool reshadefx::parser::parse_variable(spv_type type, std::string name, spv_basi
 	if (!parse_array_size(type))
 		return false;
 
-	spv_variable_info info;
 	info.name = name;
 	info.unique_name = global ? (type.has(spv_type::qualifier_uniform) ? 'U' : 'V') + current_scope().name + name : name;
 	std::replace(info.unique_name.begin(), info.unique_name.end(), ':', '_');
@@ -2779,7 +2713,7 @@ bool reshadefx::parser::parse_variable(spv_type type, std::string name, spv_basi
 			return error(_token.location, 3043, "local variables cannot have semantics"), false;
 
 		info.builtin = semantic_to_builtin(_token.literal_as_string, info.semantic_index);
-		info.semantic = _token.literal_as_string;
+		info.semantic = std::move(_token.literal_as_string);
 	}
 	else
 	{
@@ -2871,7 +2805,7 @@ bool reshadefx::parser::parse_variable(spv_type type, std::string name, spv_basi
 
 		_uniforms.member_list.push_back(std::move(member));
 
-		symbol = { spv::OpVariable, _global_ubo_variable, type };
+		symbol = { spv::OpAccessChain, _global_ubo_variable, type };
 
 		symbol.member_index = _uniforms.member_list.size() - 1;
 
@@ -2930,8 +2864,8 @@ bool reshadefx::parser::parse_variable_properties(spv_variable_info &props)
 		if (!expect(tokenid::identifier))
 			return consume_until('}'), false;
 
-		const auto name = _token.literal_as_string;
-		const auto location = _token.location;
+		const auto name = std::move(_token.literal_as_string);
+		const auto location = std::move(_token.location);
 
 		if (!expect('='))
 			return consume_until('}'), false;
@@ -2964,7 +2898,7 @@ bool reshadefx::parser::parse_variable_properties(spv_variable_info &props)
 		}
 
 		// Parse right hand side as normal expression if no special enumeration name was matched already
-		if (spv_basic_block temp_section; !expression.is_constant && !parse_expression_multary(temp_section, expression))
+		if (spv_basic_block block; !expression.is_constant && !parse_expression_multary(block, expression))
 			return error(_token_next.location, 3000, "syntax error: unexpected '" + token::id_to_name(_token_next.id) + "', expected expression"), consume_until('}'), false;
 
 		if (name == "Texture")
@@ -3027,18 +2961,17 @@ bool reshadefx::parser::parse_technique()
 	if (!expect(tokenid::identifier))
 		return false;
 
-	spv_technique_info info;
-	info.name = _token.literal_as_string;
-	info.unique_name = 'T' + current_scope().name + info.name;
-	std::replace(info.unique_name.begin(), info.unique_name.end(), ':', '_');
+	const auto name = std::move(_token.literal_as_string);
+	std::vector<spv_pass_info> pass_list;
+	std::unordered_map<std::string, spv_constant> annotation_list;
 
-	if (!parse_annotations(info.annotation_list) || !expect('{'))
+	if (!parse_annotations(annotation_list) || !expect('{'))
 		return false;
 
 	while (!peek('}'))
 	{
 		if (spv_pass_info pass; parse_technique_pass(pass))
-			info.pass_list.push_back(std::move(pass));
+			pass_list.push_back(std::move(pass));
 		else if (!peek(tokenid::pass)) // If there is another pass definition following, try to parse that despite the error
 			return consume_until('}'), false;
 	}
@@ -3050,7 +2983,7 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &info)
 	if (!expect(tokenid::pass))
 		return false;
 
-	// Passes can have an optional name, so consume that if it exists
+	// Passes can have an optional name, so consume and ignore that if it exists
 	accept(tokenid::identifier);
 
 	if (!expect('{'))
@@ -3062,8 +2995,8 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &info)
 		if (!expect(tokenid::identifier))
 			return consume_until('}'), false;
 
-		auto location = _token.location;
-		const std::string state = _token.literal_as_string;
+		auto location = std::move(_token.location);
+		const auto state = std::move(_token.literal_as_string);
 
 		if (!expect('='))
 			return consume_until('}'), false;
@@ -3080,7 +3013,7 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &info)
 			std::string identifier;
 
 			if (expect(tokenid::identifier))
-				identifier = _token.literal_as_string;
+				identifier = std::move(_token.literal_as_string);
 			else
 				return consume_until('}'), false;
 
@@ -3093,7 +3026,7 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &info)
 				identifier += "::" + _token.literal_as_string;
 			}
 
-			location = _token.location;
+			location = std::move(_token.location);
 
 			// Figure out which scope to start searching in
 			scope scope = { "::", 0, 0 };
@@ -3398,7 +3331,7 @@ bool reshadefx::parser::parse_technique_pass(spv_pass_info &info)
 			}
 
 			// Parse right hand side as normal expression if no special enumeration name was matched already
-			if (spv_basic_block temp_section; !expression.is_constant && !parse_expression_multary(temp_section, expression))
+			if (spv_basic_block block; !expression.is_constant && !parse_expression_multary(block, expression))
 				return error(_token_next.location, 3000, "syntax error: unexpected '" + token::id_to_name(_token_next.id) + "', expected expression"), consume_until('}'), false;
 			else if (!expression.is_constant || !expression.type.is_scalar())
 				return error(expression.location, 3011, "pass state value must be a literal scalar expression"), consume_until('}'), false;

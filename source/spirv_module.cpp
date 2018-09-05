@@ -708,6 +708,8 @@ spv::Id spirv_module::convert_constant(const reshadefx::spv_type &type, const sp
 
 	if (type.is_array())
 	{
+		assert(type.array_length > 0);
+
 		std::vector<spv::Id> elements;
 
 		spv_type elem_type = type;
@@ -715,7 +717,7 @@ spv::Id spirv_module::convert_constant(const reshadefx::spv_type &type, const sp
 
 		for (const spv_constant &elem : data.as_array)
 			elements.push_back(convert_constant(elem_type, elem));
-		for (size_t i = elements.size(); i < type.array_length; ++i)
+		for (size_t i = elements.size(); i < static_cast<size_t>(type.array_length); ++i)
 			elements.push_back(convert_constant(elem_type, {}));
 
 		spv_instruction &node = add_node(_types_and_constants, {}, spv::OpConstantComposite, convert_type(type));
@@ -793,6 +795,87 @@ spv::Id spirv_module::convert_constant(const reshadefx::spv_type &type, const sp
 	_constant_lookup.push_back({ type, data, result });
 
 	return result;
+}
+
+spv::Id spirv_module::construct_type(spv_basic_block &section, const spv_type &type, std::vector<spv_expression> &arguments)
+{
+	std::vector<spv::Id> ids;
+
+	// There must be exactly one constituent for each top-level component of the result
+	if (type.is_matrix())
+	{
+		assert(type.rows == type.cols);
+
+		// First, extract all arguments so that a list of scalars exist
+		for (auto &argument : arguments)
+		{
+			if (!argument.type.is_scalar())
+			{
+				for (unsigned int index = 0; index < argument.type.components(); ++index)
+				{
+					spv_expression scalar = argument;
+					add_static_index_access(scalar, index);
+					spv_type scalar_type = scalar.type;
+					scalar_type.base = type.base;
+					add_cast_operation(scalar, scalar_type);
+					ids.push_back(access_chain_load(section, scalar));
+					assert(ids.back() != 0);
+				}
+			}
+			else
+			{
+				spv_type scalar_type = argument.type;
+				scalar_type.base = type.base;
+				add_cast_operation(argument, scalar_type);
+				ids.push_back(access_chain_load(section, argument));
+				assert(ids.back() != 0);
+			}
+		}
+
+		// Second, turn that list of scalars into a list of column vectors
+		for (size_t i = 0, j = 0; i < ids.size(); i += type.rows, ++j)
+		{
+			spv_type vector_type = type;
+			vector_type.cols = 1;
+
+			spv_instruction &node = add_node(section, {}, spv::OpCompositeConstruct, convert_type(vector_type));
+			for (unsigned int k = 0; k < type.rows; ++k)
+				node.add(ids[i + k]);
+
+			ids[j] = node.result;
+		}
+
+		ids.erase(ids.begin() + type.cols, ids.end());
+
+		// Finally, construct a matrix from those column vectors
+		spv_instruction &node = add_node(section, {}, spv::OpCompositeConstruct, convert_type(type));
+
+		for (size_t i = 0; i < ids.size(); i += type.rows)
+		{
+			node.add(ids[i]);
+		}
+
+	}
+	// The exception is that for constructing a vector, a contiguous subset of the scalars consumed can be represented by a vector operand instead
+	else
+	{
+		assert(type.is_vector());
+
+		for (spv_expression &argument : arguments)
+		{
+			spv_type target_type = argument.type;
+			target_type.base = type.base;
+			add_cast_operation(argument, target_type);
+			assert(argument.type.is_scalar() || argument.type.is_vector());
+
+			ids.push_back(access_chain_load(section, argument));
+			assert(ids.back() != 0);
+		}
+	}
+
+	return add_node(section, {}, spv::OpCompositeConstruct, convert_type(type))
+		.add(ids.begin(), ids.end())
+		.result;
 }
 
 spv::Id spirv_module::access_chain_load(spv_basic_block &section, const spv_expression &chain)
