@@ -16,3 +16,6 @@
 [submodule "spirv"]
 	path = deps/spirv
 	url = https://github.com/KhronosGroup/SPIRV-Headers
+[submodule "spirv-cross"]
+	path = deps/spirv-cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross

@@ -525,9 +525,9 @@ namespace reshade::d3d9
 
 		screenshot_surface->UnlockRect();
 	}
-	bool d3d9_runtime::load_effect(const reshadefx::syntax_tree &ast, std::string &errors)
+	bool d3d9_runtime::load_effect(const reshadefx::spirv_module &module, std::string &errors)
 	{
-		return d3d9_effect_compiler(this, ast, errors, false).run();
+		return d3d9_effect_compiler(this, module, errors, false).run();
 	}
 	bool d3d9_runtime::update_texture(texture &texture, const uint8_t *data)
 	{
