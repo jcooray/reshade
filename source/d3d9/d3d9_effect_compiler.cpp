@@ -21,23 +21,22 @@ namespace reshade::d3d9
 		spirv_compiler(std::vector<uint32_t> spirv_)
 			: CompilerHLSL(std::move(spirv_)) { }
 
-		// Remap Vertex Index for SM 3.0
 		void remap_vertex_id()
 		{
-			using namespace spirv_cross;
-
 			for (auto &id : ids)
 			{
-				if (id.get_type() != TypeVariable)
+				if (id.get_type() != spirv_cross::TypeVariable)
 					continue;
 
-				const unsigned int builtin = get_decoration(id.get_id(), spv::DecorationBuiltIn);
+				auto &variable = id.get<spirv_cross::SPIRVariable>();
 
+				const unsigned int builtin = get_decoration(variable.self, spv::DecorationBuiltIn);
+
+				// Remap vertex index to TEXCOORD0
 				if (builtin == spv::BuiltInVertexId || builtin == spv::BuiltInVertexIndex)
 				{
-					unset_decoration(id.get_id(), spv::DecorationBuiltIn);
-
-					set_decoration(id.get_id(), spv::DecorationLocation, 0); // TEXCOORD0
+					set_decoration(variable.self, spv::DecorationLocation, 0); // TEXCOORD0
+					unset_decoration(variable.self, spv::DecorationBuiltIn);
 				}
 			}
 		}
@@ -312,7 +311,7 @@ namespace reshade::d3d9
 
 	void d3d9_effect_compiler::visit_sampler(const spirv_sampler_info &sampler_info)
 	{
-		const auto existing_texture = _runtime->find_texture(sampler_info.unique_name);
+		const auto existing_texture = _runtime->find_texture(sampler_info.texture_name);
 
 		if (!existing_texture)
 			return;
@@ -331,7 +330,9 @@ namespace reshade::d3d9
 		sampler.states[D3DSAMP_MAXANISOTROPY] = 1;
 		sampler.states[D3DSAMP_SRGBTEXTURE] = sampler_info.srgb;
 
-		_samplers[sampler_info.unique_name] = sampler;
+		_sampler_bindings.resize(std::max(_sampler_bindings.size(), sampler_info.binding + 1));
+
+		_sampler_bindings[sampler_info.binding] = std::move(sampler);
 	}
 
 	void d3d9_effect_compiler::visit_uniform(const spirv_cross::CompilerHLSL &cross, const spirv_uniform_info &uniform_info)
@@ -344,8 +345,9 @@ namespace reshade::d3d9
 		obj.rows = member_type.vecsize;
 		obj.columns = member_type.columns;
 		obj.elements = !member_type.array.empty() && member_type.array_size_literal[0] ? member_type.array[0] : 1;
-		//obj.storage_size = cross.get_declared_struct_member_size(struct_type, uniform_info.member_index);
+		obj.storage_size = cross.get_declared_struct_member_size(struct_type, uniform_info.member_index);
 		//obj.storage_offset = _uniform_storage_offset + cross.type_struct_member_offset(struct_type, uniform_info.member_index);
+		obj.storage_offset = _uniform_storage_offset + cross.type_struct_member_offset(struct_type, uniform_info.member_index) * 4;
 
 		for (const auto &annotation : uniform_info.annotations)
 			obj.annotations.insert({ annotation.first, variant(annotation.second) });
@@ -365,14 +367,14 @@ namespace reshade::d3d9
 			break;
 		}
 
-		obj.storage_offset = _uniform_storage_offset + _constant_register_count * 16;
-		_constant_register_count += (obj.storage_size / 4 + 4 - ((obj.storage_size / 4) % 4)) / 4;
+		_constant_register_count += obj.storage_size / 4;
+		//_constant_register_count += (obj.storage_size / 4 + 4 - ((obj.storage_size / 4) % 4)) / 4;
 
 		auto &uniform_storage = _runtime->get_uniform_value_storage();
 
-		if (_uniform_storage_offset + _constant_register_count * 16 >= uniform_storage.size())
+		if (obj.storage_offset + obj.storage_size >= uniform_storage.size())
 		{
-			uniform_storage.resize(uniform_storage.size() + 4096);
+			uniform_storage.resize(uniform_storage.size() + 128);
 		}
 
 		// TODO
@@ -413,6 +415,10 @@ namespace reshade::d3d9
 
 			pass.vertex_shader = vs_entry_points[pass_info.vs_entry_point];
 			pass.pixel_shader = ps_entry_points[pass_info.ps_entry_point];
+
+			pass.sampler_count = std::min(16u, _sampler_bindings.size());
+			for (size_t i = 0; i < pass.sampler_count; ++i)
+				pass.samplers[i] = _sampler_bindings[i];
 
 			pass.render_targets[0] = _runtime->_backbuffer_resolved.get();
 			pass.clear_render_targets = pass_info.clear_render_targets;
@@ -510,6 +516,13 @@ namespace reshade::d3d9
 					break;
 				}
 
+				// Unset textures that are used as render target
+				for (size_t s = 0; s < pass.sampler_count; ++s)
+				{
+					if (pass.samplers[s].texture == texture->impl->as<d3d9_tex_data>())
+						pass.samplers[s].texture = nullptr;
+				}
+
 				pass.render_targets[i] = texture->impl->as<d3d9_tex_data>()->surface.get();
 			}
 
@@ -555,7 +568,7 @@ namespace reshade::d3d9
 
 		const auto D3DCompile = reinterpret_cast<pD3DCompile>(GetProcAddress(_d3dcompiler_module, "D3DCompile"));
 
-		HRESULT hr = D3DCompile(hlsl.c_str(), hlsl.size(), nullptr, nullptr, nullptr, "main", target.c_str(), D3DCOMPILE_ENABLE_STRICTNESS, 0, &compiled, &errors);
+		HRESULT hr = D3DCompile(hlsl.c_str(), hlsl.size(), nullptr, nullptr, nullptr, "main", target.c_str(), 0, 0, &compiled, &errors);
 
 		if (errors != nullptr)
 			_errors.append(static_cast<const char *>(errors->GetBufferPointer()), errors->GetBufferSize() - 1); // Subtracting one to not append the null-terminator as well

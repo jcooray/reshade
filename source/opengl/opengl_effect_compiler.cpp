@@ -282,17 +282,18 @@ namespace reshade::opengl
 		// Parse uniform variables
 		_uniform_storage_offset = _runtime->get_uniform_value_storage().size();
 
-		//for (const spirv_cross::Resource &ubo : resources.uniform_buffers)
-		//{
-		//	const auto &struct_type = cross.get_type(ubo.base_type_id);
+		for (const spirv_cross::Resource &ubo : resources.uniform_buffers)
+		{
+			const auto &struct_type = cross.get_type(ubo.base_type_id);
 
-		//	_uniform_buffer_size += cross.get_declared_struct_size(struct_type);
-
-		//	for (uint32_t i = 0; i < struct_type.member_types.size(); ++i)
-		//	{
-		//		visit_uniform(cross, ubo.base_type_id, i);
-		//	}
-		//}
+			// Make sure names are valid for GLSL
+			for (uint32_t i = 0; i < struct_type.member_types.size(); ++i)
+			{
+				std::string name = cross.get_member_name(ubo.base_type_id, i);
+				name = escape_name(name);
+				cross.set_member_name(ubo.base_type_id, i, name);
+			}
+		}
 
 		for (const auto &texture : _module->_textures)
 		{
@@ -435,26 +436,45 @@ namespace reshade::opengl
 		if (!existing_texture)
 			return;
 
-		opengl_sampler sampler;
-		sampler.id = 0;
+		size_t hash = 2166136261;
+		hash = (hash * 16777619) ^ sampler_info.address_u;
+		hash = (hash * 16777619) ^ sampler_info.address_v;
+		hash = (hash * 16777619) ^ sampler_info.address_w;
+		hash = (hash * 16777619) ^ sampler_info.filter;
+		hash = (hash * 16777619) ^ reinterpret_cast<const uint32_t &>(sampler_info.lod_bias);
+		hash = (hash * 16777619) ^ reinterpret_cast<const uint32_t &>(sampler_info.min_lod);
+		hash = (hash * 16777619) ^ reinterpret_cast<const uint32_t &>(sampler_info.max_lod);
+
+		auto it = _runtime->_effect_sampler_states.find(hash);
+
+		if (it == _runtime->_effect_sampler_states.end())
+		{
+			GLenum minfilter = GL_NONE, magfilter = GL_NONE;
+			literal_to_filter_mode(static_cast<texture_filter>(sampler_info.filter), minfilter, magfilter);
+
+			GLuint sampler_id = 0;
+			glGenSamplers(1, &sampler_id);
+			glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_u)));
+			glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_v)));
+			glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_R, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_w)));
+			glSamplerParameteri(sampler_id, GL_TEXTURE_MAG_FILTER, magfilter);
+			glSamplerParameteri(sampler_id, GL_TEXTURE_MIN_FILTER, minfilter);
+			glSamplerParameterf(sampler_id, GL_TEXTURE_LOD_BIAS, sampler_info.lod_bias);
+			glSamplerParameterf(sampler_id, GL_TEXTURE_MIN_LOD, sampler_info.min_lod);
+			glSamplerParameterf(sampler_id, GL_TEXTURE_MAX_LOD, sampler_info.max_lod);
+
+			it = _runtime->_effect_sampler_states.emplace(hash, sampler_id).first;
+		}
+
+		opengl_sampler_data sampler;
+		sampler.id = it->second;
 		sampler.texture = existing_texture->impl->as<opengl_tex_data>();
 		sampler.is_srgb = sampler_info.srgb;
 		sampler.has_mipmaps = existing_texture->levels > 1;
 
-		GLenum minfilter = GL_NONE, magfilter = GL_NONE;
-		literal_to_filter_mode(static_cast<texture_filter>(sampler_info.filter), minfilter, magfilter);
+		_sampler_bindings.resize(std::max(_sampler_bindings.size(), sampler_info.binding + 1));
 
-		glGenSamplers(1, &sampler.id);
-		glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_S, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_u)));
-		glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_T, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_v)));
-		glSamplerParameteri(sampler.id, GL_TEXTURE_WRAP_R, literal_to_wrap_mode(static_cast<texture_address_mode>(sampler_info.address_w)));
-		glSamplerParameteri(sampler.id, GL_TEXTURE_MAG_FILTER, magfilter);
-		glSamplerParameteri(sampler.id, GL_TEXTURE_MIN_FILTER, minfilter);
-		glSamplerParameterf(sampler.id, GL_TEXTURE_LOD_BIAS, sampler_info.lod_bias);
-		glSamplerParameterf(sampler.id, GL_TEXTURE_MIN_LOD, sampler_info.min_lod);
-		glSamplerParameterf(sampler.id, GL_TEXTURE_MAX_LOD, sampler_info.max_lod);
-
-		_runtime->_effect_samplers.push_back(std::move(sampler));
+		_sampler_bindings[sampler_info.binding] = std::move(sampler);
 	}
 
 	void opengl_effect_compiler::visit_uniform(const spirv_cross::CompilerGLSL &cross, const spirv_uniform_info &uniform_info)
@@ -501,7 +521,7 @@ namespace reshade::opengl
 
 		auto &uniform_storage = _runtime->get_uniform_value_storage();
 
-		if (_uniform_storage_offset + _uniform_buffer_size >= static_cast<ptrdiff_t>(uniform_storage.size()))
+		if (obj.storage_offset + obj.storage_size >= static_cast<ptrdiff_t>(uniform_storage.size()))
 		{
 			uniform_storage.resize(uniform_storage.size() + 128);
 		}
@@ -537,6 +557,8 @@ namespace reshade::opengl
 			obj.uniform_storage_index = _runtime->_effect_ubos.size();
 			obj.uniform_storage_offset = _uniform_storage_offset;
 		}
+
+		obj_data->samplers = _sampler_bindings;
 
 		for (const auto &pass_info : technique_info.passes)
 		{
@@ -651,13 +673,17 @@ namespace reshade::opengl
 				GLint logsize = 0;
 				glGetProgramiv(pass.program, GL_INFO_LOG_LENGTH, &logsize);
 
-				std::string log(logsize, '\0');
-				glGetProgramInfoLog(pass.program, logsize, nullptr, &log.front());
+				if (logsize != 0)
+				{
+					std::string log(logsize, '\0');
+					glGetProgramInfoLog(pass.program, logsize, nullptr, log.data());
+
+					_errors += log;
+				}
 
 				glDeleteProgram(pass.program);
 				pass.program = 0;
 
-				_errors += log;
 				error("program linking failed");
 				return;
 			}
@@ -672,7 +698,6 @@ namespace reshade::opengl
 
 		spirv_cross::CompilerGLSL::Options options = {};
 		options.version = 450;
-		options.vertex.fixup_clipspace = true;
 		options.vertex.flip_vert_y = true;
 
 		cross.set_common_options(options);
@@ -720,10 +745,14 @@ namespace reshade::opengl
 			GLint logsize = 0;
 			glGetShaderiv(shader_id, GL_INFO_LOG_LENGTH, &logsize);
 
-			std::string log(logsize, '\0');
-			glGetShaderInfoLog(shader_id, logsize, nullptr, &log.front());
+			if (logsize != 0)
+			{
+				std::string log(logsize, '\0');
+				glGetShaderInfoLog(shader_id, logsize, nullptr, &log.front());
 
-			_errors += log;
+				_errors += log;
+			}
+
 			error("internal shader compilation failed");
 			return;
 		}

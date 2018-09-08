@@ -40,6 +40,7 @@ namespace reshade::opengl
 		bool _success;
 		std::string &_errors;
 		GLintptr _uniform_storage_offset = 0, _uniform_buffer_size = 0;
+		std::vector<opengl_sampler_data> _sampler_bindings;
 		std::unordered_map<std::string, GLuint> vs_entry_points;
 		std::unordered_map<std::string, GLuint> fs_entry_points;
 	};

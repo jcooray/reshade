@@ -43,8 +43,8 @@ namespace reshade::d3d9
 		size_t _uniform_storage_offset = 0, _constant_register_count = 0;
 		std::stringstream _global_code, _global_uniforms;
 		bool _skip_shader_optimization;
-		std::unordered_map<std::string, d3d9_sampler> _samplers;
 		HMODULE _d3dcompiler_module = nullptr;
+		std::vector<d3d9_sampler> _sampler_bindings;
 		std::unordered_map<std::string, com_ptr<IDirect3DVertexShader9>> vs_entry_points;
 		std::unordered_map<std::string, com_ptr< IDirect3DPixelShader9>> ps_entry_points;
 	};
